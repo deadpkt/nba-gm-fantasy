@@ -1,16 +1,83 @@
-# React + Vite
+# 🏀 NBA GM Fantasy
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A modern NBA-inspired fantasy basketball management and simulation experience built with React and Firebase.
 
-Currently, two official plugins are available:
+Create your dream team, manage your lineup, compete against friends, and experience basketball management in an NBA 2K inspired environment.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 🚀 Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 👤 Authentication
 
-## Expanding the Oxlint configuration
+- Google Sign-In with Firebase Authentication
+- Secure user sessions
+- Persistent login after refresh
+- User profile integration
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### 🏀 Fantasy Team Management
+
+- Build your own basketball team
+- Select and manage players
+- Create your starting five
+- Calculate team ratings
+- Track team performance
+
+### 🏟️ Basketball Court Lineup System
+
+- Visual basketball court layout
+- Assign players to positions:
+  - PG (Point Guard)
+  - SG (Shooting Guard)
+  - SF (Small Forward)
+  - PF (Power Forward)
+  - C (Center)
+
+### 🎮 Match Simulation
+
+- Basketball-style game simulation
+- Live scoreboard experience
+- Player performances
+- Team ratings affect game results
+- MVP selection
+
+### 🌐 Online Multiplayer
+
+- Create private matches
+- Invite friends with a match link
+- Play against other fantasy teams
+- Real-time updates with Firebase
+
+### 🎨 NBA Inspired UI
+
+- Modern dark basketball theme
+- NBA 2K inspired player cards
+- Smooth animations
+- Responsive design
+- Basketball arena atmosphere
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+
+- React
+- Vite
+- JavaScript
+- CSS
+
+### Backend / Services
+
+- Firebase Authentication
+- Firebase Firestore
+
+### Development Tools
+
+- Git
+- GitHub
+- Vercel
+
+---
+
+## 📂 Project Structure
