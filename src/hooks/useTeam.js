@@ -1,8 +1,8 @@
-import { useContext } from 'react'
-import { TeamContext } from '../context/TeamContext'
+import { useContext } from "react";
+import { TeamContext } from "../context/TeamContext";
 
 export default function useTeam() {
-  const teamContext = useContext(TeamContext)
-  if (!teamContext) throw new Error('useTeam must be used inside TeamProvider')
-  return teamContext
+  const teamContext = useContext(TeamContext);
+  if (!teamContext) throw new Error("useTeam must be used inside TeamProvider");
+  return teamContext;
 }

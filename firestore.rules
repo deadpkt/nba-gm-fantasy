@@ -1,8 +1,173 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isLeagueMember(leagueId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds;
+    }
+
+    function isCommissioner(leagueId) {
+      return isLeagueMember(leagueId)
+        && request.auth.uid == get(/databases/$(database)/documents/leagues/$(leagueId)).data.commissionerUid;
+    }
+
+    function onlyProfileFieldsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'displayName', 'email', 'photoURL', 'activeLeagueId', 'updatedAt'
+      ]);
+    }
+
+    function isNewProfile() {
+      return request.resource.data.keys().hasOnly([
+          'displayName', 'email', 'photoURL', 'activeLeagueId', 'createdAt',
+          'updatedAt'
+        ]);
+    }
+
+    function isSingleLeagueResultIncrement() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['record', 'updatedAt'])
+        && request.resource.data.record.wins >= resource.data.record.wins
+        && request.resource.data.record.losses >= resource.data.record.losses
+        && request.resource.data.record.wins - resource.data.record.wins
+          + request.resource.data.record.losses - resource.data.record.losses == 1;
+    }
+
+    // The catalog is published by a trusted server-side workflow. Clients can
+    // read it but must never be able to alter the shared player pool.
+    match /playerCatalogs/{catalogId} {
+      allow get: if signedIn() && catalogId == 'current';
+
+      match /players/{playerId} {
+        allow get, list: if signedIn() && catalogId == 'current';
+      }
+    }
+
     match /users/{userId} {
-      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn() && request.auth.uid == userId && isNewProfile();
+      allow update: if signedIn() && request.auth.uid == userId
+        && onlyProfileFieldsChanged();
+
+      match /matchHistory/{matchId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId
+          && request.resource.data.matchId == matchId;
+      }
+    }
+
+    match /leagues/{leagueId} {
+      // An invite URL needs to resolve its league document before its visitor joins.
+      // Membership and roster subcollections remain private to league members.
+      allow get: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.commissionerUid == request.auth.uid
+        && request.resource.data.memberIds.size() == 1
+        && request.resource.data.memberIds[0] == request.auth.uid
+        && request.resource.data.status == 'lobby';
+      allow update: if (isCommissioner(leagueId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+        || (signedIn()
+          && resource.data.status == 'lobby'
+          && !(request.auth.uid in resource.data.memberIds)
+          && resource.data.memberIds.size() < resource.data.maxMembers
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'updatedAt'])
+          && request.resource.data.memberIds.hasAll(resource.data.memberIds)
+          && request.resource.data.memberIds.hasAll([request.auth.uid])
+          && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1);
+
+      match /members/{userId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create: if signedIn() && request.auth.uid == userId
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds.hasAll([userId])
+          && request.resource.data.uid == userId
+          && (request.resource.data.role == 'member'
+            || (request.resource.data.role == 'commissioner'
+              && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.commissionerUid == userId));
+        allow update: if isCommissioner(leagueId);
+      }
+
+      match /teams/{userId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create: if signedIn() && request.auth.uid == userId
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds.hasAll([userId])
+          && request.resource.data.ownerUid == userId;
+        allow update: if isLeagueMember(leagueId) && request.auth.uid == userId
+          && (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'roster', 'lineup', 'coachStrategy', 'strategy', 'updatedAt'
+          ]) || isSingleLeagueResultIncrement());
+      }
+    }
+
+    match /matches/{matchId} {
+      function isHost() {
+        return signedIn() && resource.data.hostUid == request.auth.uid;
+      }
+
+      function isGuest() {
+        return signedIn() && resource.data.guestUid == request.auth.uid;
+      }
+
+      function isParticipant() {
+        return isHost() || isGuest();
+      }
+
+      function isGuestJoining() {
+        return signedIn()
+          && isLeagueMember(resource.data.leagueId)
+          && resource.data.status == 'waiting'
+          && resource.data.guestUid == null
+          && request.resource.data.guestUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'guestUid', 'guest', 'ready', 'updatedAt'
+          ])
+          && request.resource.data.ready.host == false
+          && request.resource.data.ready.guest == false;
+      }
+
+      function isReadyUpdate() {
+        return isParticipant()
+          && resource.data.status == 'waiting'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ready', 'updatedAt'])
+          && (isHost() && request.resource.data.ready.guest == resource.data.ready.guest
+            || isGuest() && request.resource.data.ready.host == resource.data.ready.host);
+      }
+
+      function isHostStart() {
+        return isHost()
+          && resource.data.status == 'waiting'
+          && resource.data.ready.host == true
+          && resource.data.ready.guest == true
+          && request.resource.data.status == 'in_progress'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'simulation', 'startedAt', 'updatedAt'
+          ]);
+      }
+
+      function isHostSimulationUpdate() {
+        return isHost()
+          && resource.data.status == 'in_progress'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'simulation', 'status', 'result', 'completedAt', 'updatedAt'
+          ])
+          && (request.resource.data.status == 'in_progress'
+            || request.resource.data.status == 'completed');
+      }
+
+      allow get: if signedIn()
+        && (isParticipant() || (resource.data.status == 'waiting' && resource.data.guestUid == null));
+      allow list: if isParticipant();
+      allow create: if signedIn()
+        && request.resource.data.hostUid == request.auth.uid
+        && isLeagueMember(request.resource.data.leagueId)
+        && request.resource.data.guestUid == null
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.ready.host == false
+        && request.resource.data.ready.guest == false;
+      allow update: if isGuestJoining() || isReadyUpdate() || isHostStart() || isHostSimulationUpdate();
     }
   }
 }

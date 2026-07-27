@@ -3,7 +3,20 @@ const player = (id, name, position, team, overall, points, rebounds, assists, co
   image: `https://cdn.nba.com/headshots/nba/latest/1040x760/${id}.png`,
 })
 
-const players = [
+// This is also the seed shape for playerCatalogs/current. The app continues to
+// use it locally whenever the published Firestore catalog is unavailable.
+export const currentPlayerCatalog = {
+  id: "current",
+  version: "local-seed-v1",
+  source: "local-fallback",
+  // The current catalog keeps its manual ratings. Future API-backed catalog
+  // versions can publish a formula version without rewriting roster snapshots.
+  ratingVersion: "manual-v1",
+  season: "2025-26",
+  playerCount: 30,
+};
+
+export const currentCatalogPlayers = [
   player(1628983, 'Shai Gilgeous-Alexander', 'PG', 'OKC', 96, 32.7, 5.0, 6.4, '#ef9d27'),
   player(203999, 'Nikola Jokić', 'C', 'DEN', 98, 29.6, 12.7, 10.2, '#efb136'),
   player(1628369, 'Jayson Tatum', 'SF', 'BOS', 95, 26.8, 8.7, 6.0, '#18a66a'),
@@ -36,4 +49,11 @@ const players = [
   player(1627750, 'Jamal Murray', 'PG', 'DEN', 89, 21.4, 3.8, 6.0, '#eab348'),
 ]
 
-export default players
+// These objects are the exact Firestore document payloads for
+// playerCatalogs/current/players/{nbaPlayerId}. catalogOrder is storage
+// metadata only; playerRepository removes it before returning the app contract.
+export const currentCatalogSeedPlayers = currentCatalogPlayers.map(
+  (catalogPlayer, catalogOrder) => ({ ...catalogPlayer, catalogOrder }),
+);
+
+export default currentCatalogPlayers
