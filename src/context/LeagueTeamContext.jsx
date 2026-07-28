@@ -39,6 +39,12 @@ export function LeagueTeamProvider({ children }) {
     setLeagueTeamError(null);
     setLeagueTeamLoading(true);
 
+    console.debug("[LeagueTeamContext] Starting team listener", {
+      authUid: user.uid,
+      activeLeagueId,
+      teamPath: `leagues/${activeLeagueId}/teams/${user.uid}`,
+    });
+
     return onSnapshot(
       doc(db, "leagues", activeLeagueId, "teams", user.uid),
       (snapshot) => {

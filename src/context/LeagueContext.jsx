@@ -40,6 +40,13 @@ export function LeagueProvider({ children }) {
       if (leagueLoaded && membersLoaded) setLeagueLoading(false);
     };
 
+    console.debug("[LeagueContext] Starting league listeners", {
+      authUid: user.uid,
+      activeLeagueId,
+      leaguePath: `leagues/${activeLeagueId}`,
+      membersPath: `leagues/${activeLeagueId}/members`,
+    });
+
     const unsubscribeLeague = onSnapshot(
       doc(db, "leagues", activeLeagueId),
       (snapshot) => {

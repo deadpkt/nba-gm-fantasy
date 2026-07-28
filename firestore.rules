@@ -7,7 +7,8 @@ service cloud.firestore {
 
     function isLeagueMember(leagueId) {
       return signedIn()
-        && request.auth.uid in get(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds;
+        && get(/databases/$(database)/documents/leagues/$(leagueId))
+          .data.memberIds.hasAny([request.auth.uid]);
     }
 
     function isCommissioner(leagueId) {
@@ -17,13 +18,13 @@ service cloud.firestore {
 
     function onlyProfileFieldsChanged() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'displayName', 'email', 'photoURL', 'activeLeagueId', 'updatedAt'
+        'displayName', 'email', 'photoURL', 'bannerURL', 'activeLeagueId', 'updatedAt'
       ]);
     }
 
     function isNewProfile() {
       return request.resource.data.keys().hasOnly([
-          'displayName', 'email', 'photoURL', 'activeLeagueId', 'createdAt',
+          'displayName', 'email', 'photoURL', 'bannerURL', 'activeLeagueId', 'createdAt',
           'updatedAt'
         ]);
     }

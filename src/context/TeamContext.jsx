@@ -9,6 +9,7 @@ const profileFrom = (user, profile = {}) => ({
   displayName: profile.displayName ?? user?.displayName ?? "",
   email: profile.email ?? user?.email ?? "",
   photoURL: profile.photoURL ?? user?.photoURL ?? "",
+  bannerURL: profile.bannerURL ?? "",
 });
 
 export function TeamProvider({ children }) {

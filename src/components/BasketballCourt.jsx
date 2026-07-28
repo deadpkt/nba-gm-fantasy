@@ -1,20 +1,41 @@
+import { useState } from "react";
 import { LINEUP_POSITIONS } from "../utils/team";
 
+const formattedStat = (value) =>
+  Number.isFinite(value) ? value.toFixed(1) : "—";
+
+function threePointPercentage(stats = {}) {
+  const percentage =
+    stats.threePointPercentage ?? stats.threePointPercent ?? stats.threePoint;
+  if (!Number.isFinite(percentage)) return "—";
+  return `${percentage <= 1 ? percentage * 100 : percentage}%`;
+}
+
 function BasketballCourt({ team, lineup, onAssign }) {
+  const [focusedPlayerId, setFocusedPlayerId] = useState(null);
+
   return (
     <section className="lineup-section">
       <div className="section-heading">
         <div>
           <p className="section-label">LINEUP BOARD</p>
           <h2>
-            Set your court <span>Assign every starting position</span>
+            Starting five <span>Set your court and lock in every position</span>
           </h2>
         </div>
       </div>
-      <div className="basketball-court">
-        <div className="court-center-circle" aria-hidden="true" />
+      <div className="basketball-court" aria-label="Starting five court layout">
+        <div className="court-marking court-marking--center-line" aria-hidden="true" />
+        <div className="court-marking court-marking--center-circle" aria-hidden="true" />
+        <div className="court-marking court-marking--three-arc" aria-hidden="true" />
+        <div className="court-marking court-marking--paint" aria-hidden="true" />
+        <div className="court-marking court-marking--free-throw" aria-hidden="true" />
+        <div className="court-marking court-marking--basket" aria-hidden="true" />
         {LINEUP_POSITIONS.map((position) => {
           const player = team.find((item) => item.id === lineup[position]);
+          const isFocused = focusedPlayerId === player?.id;
+          const playerColor = player?.color || "#f4c646";
+
           return (
             <div
               className={`court-slot court-slot--${position.toLowerCase()}`}
@@ -22,18 +43,33 @@ function BasketballCourt({ team, lineup, onAssign }) {
             >
               <span className="court-slot__position">{position}</span>
               {player ? (
-                <div
-                  className="court-player"
-                  style={{ "--player-color": player.color }}
+                <button
+                  type="button"
+                  className={`court-player ${player.overall >= 94 ? "court-player--elite" : ""} ${isFocused ? "is-focused" : ""}`}
+                  style={{ "--player-color": playerColor }}
+                  onClick={() =>
+                    setFocusedPlayerId((current) =>
+                      current === player.id ? null : player.id,
+                    )
+                  }
+                  aria-expanded={isFocused}
                 >
-                  <img src={player.image} alt="" />
-                  <div>
+                  <span className="court-player__avatar">
+                    <img src={player.image} alt="" />
+                    <i>{player.overall}</i>
+                  </span>
+                  <span className="court-player__identity">
                     <b>{player.name}</b>
-                    <small>
-                      {player.overall} OVR / {player.team}
-                    </small>
-                  </div>
-                </div>
+                    <small>{position} · {player.team}</small>
+                  </span>
+                  <span className="court-player__stats" aria-label={`${player.name} statistics`}>
+                    <strong>{player.name}</strong>
+                    <span><b>OVR</b>{player.overall}</span>
+                    <span><b>PTS</b>{formattedStat(player.stats?.points)}</span>
+                    <span><b>AST</b>{formattedStat(player.stats?.assists)}</span>
+                    <span><b>3PT</b>{threePointPercentage(player.stats)}</span>
+                  </span>
+                </button>
               ) : (
                 <div className="court-player court-player--empty">
                   <b>Open position</b>
