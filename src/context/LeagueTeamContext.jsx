@@ -1,4 +1,10 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";

@@ -20,7 +20,9 @@ function Header() {
         </strong>
       </NavLink>
       <nav aria-label="Main navigation">
-        <NavLink end to="/">Home</NavLink>
+        <NavLink end to="/">
+          Home
+        </NavLink>
         <NavLink to="/my-team">
           My team <i>{roster.length}</i>
         </NavLink>

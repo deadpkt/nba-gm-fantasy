@@ -1,4 +1,7 @@
-import { calculateOverall, RATING_VERSION } from "../../src/lib/playerRatings.js";
+import {
+  calculateOverall,
+  RATING_VERSION,
+} from "../../src/lib/playerRatings.js";
 
 const REQUIRED_POSITIONS = new Set(["PG", "SG", "SF", "PF", "C"]);
 
@@ -36,9 +39,14 @@ const headshotUrl = (nbaPlayerId) =>
 // }
 export function normalizeProviderPlayer(providerPlayer, options = {}) {
   const id = requireNbaPlayerId(providerPlayer?.nbaPlayerId);
-  const position = requireText(providerPlayer?.primaryPosition, "primaryPosition");
+  const position = requireText(
+    providerPlayer?.primaryPosition,
+    "primaryPosition",
+  );
   if (!REQUIRED_POSITIONS.has(position)) {
-    throw new Error(`Provider player has an unsupported primary position: ${position}.`);
+    throw new Error(
+      `Provider player has an unsupported primary position: ${position}.`,
+    );
   }
 
   const seasonStats = providerPlayer?.seasonStats;

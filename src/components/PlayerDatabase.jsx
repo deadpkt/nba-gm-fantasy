@@ -18,7 +18,8 @@ function PlayerDatabase({ roster, onAddPlayer }) {
   const [search, setSearch] = useState("");
   const [position, setPosition] = useState("ALL");
   const filteredPlayers = usePlayerSearch(players, search, position);
-  const invalidFirestorePlayers = validationDiagnostics?.firestore?.invalid.length || 0;
+  const invalidFirestorePlayers =
+    validationDiagnostics?.firestore?.invalid.length || 0;
 
   return (
     <section className="players-section player-database">
@@ -40,7 +41,10 @@ function PlayerDatabase({ roster, onAddPlayer }) {
             placeholder="Search player, team, or position"
           />
         </label>
-        <div className="position-filters" aria-label="Filter players by position">
+        <div
+          className="position-filters"
+          aria-label="Filter players by position"
+        >
           {positions.map((item) => (
             <button
               type="button"
@@ -62,7 +66,8 @@ function PlayerDatabase({ roster, onAddPlayer }) {
       )}
       {invalidFirestorePlayers > 0 && (
         <div className="player-database__empty">
-          {invalidFirestorePlayers} invalid catalog player{invalidFirestorePlayers === 1 ? " was" : "s were"} skipped safely.
+          {invalidFirestorePlayers} invalid catalog player
+          {invalidFirestorePlayers === 1 ? " was" : "s were"} skipped safely.
         </div>
       )}
       {playersLoading ? (

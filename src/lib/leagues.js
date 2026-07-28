@@ -97,9 +97,7 @@ export async function joinLeague({ user, inviteCode }) {
 }
 
 export async function selectLeague(userId, leagueId) {
-  const member = await getDoc(
-    doc(db, "leagues", leagueId, "members", userId),
-  );
+  const member = await getDoc(doc(db, "leagues", leagueId, "members", userId));
   if (!member.exists()) {
     throw new Error("You are not a member of this league.");
   }

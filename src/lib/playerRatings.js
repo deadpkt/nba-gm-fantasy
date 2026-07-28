@@ -19,7 +19,8 @@ export function normalizeRange(value, minimum, maximum) {
 
 export function normalizePercentage(value) {
   // Accepts either a decimal (0.615) or percentage (61.5).
-  const decimal = numberOrZero(value) > 1 ? numberOrZero(value) / 100 : numberOrZero(value);
+  const decimal =
+    numberOrZero(value) > 1 ? numberOrZero(value) / 100 : numberOrZero(value);
   return normalizeRange(decimal, 0.45, 0.7);
 }
 

@@ -1,8 +1,4 @@
-import {
-  doc,
-  runTransaction,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { LINEUP_POSITIONS } from "../utils/team";
 
@@ -86,7 +82,10 @@ async function updateRosterAndLineup(leagueId, userId, change) {
 
 export async function addLeagueTeamPlayer(leagueId, userId, player) {
   await updateRosterAndLineup(leagueId, userId, (roster) => {
-    if (roster.length >= 5 || roster.some((member) => member.id === player.id)) {
+    if (
+      roster.length >= 5 ||
+      roster.some((member) => member.id === player.id)
+    ) {
       throw new Error("This player cannot be added to the current roster.");
     }
     return [...roster, player];

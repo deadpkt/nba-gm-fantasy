@@ -7,10 +7,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { saveMatchHistory } from "./matchHistory";
-import {
-  getLineupPlayers,
-  getMissingLineupPositions,
-} from "../utils/team";
+import { getLineupPlayers, getMissingLineupPositions } from "../utils/team";
 import { createLiveGame, simulatePossession } from "../utils/liveSimulation";
 
 const inviteCode = () =>
@@ -102,7 +99,10 @@ export async function createMatchRoom({ user, leagueId, roster, lineup }) {
   });
 }
 
-export async function joinMatchRoom(matchId, { user, leagueId, roster, lineup }) {
+export async function joinMatchRoom(
+  matchId,
+  { user, leagueId, roster, lineup },
+) {
   if (!leagueId) throw new Error("Select a league before joining a match.");
   requireCompleteLineup(roster, lineup, "Joining an online match");
   const matchRef = doc(db, "matches", matchId);
@@ -189,7 +189,8 @@ export async function advanceMatchSimulation(matchId, userId) {
   const matchRef = doc(db, "matches", matchId);
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(matchRef);
-    if (!snapshot.exists()) throw new Error("This match room no longer exists.");
+    if (!snapshot.exists())
+      throw new Error("This match room no longer exists.");
     const match = snapshot.data();
     if (match.hostUid !== userId) return;
     if (match.status !== "in_progress" || match.simulation?.completed) return;

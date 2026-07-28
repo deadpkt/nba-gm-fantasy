@@ -51,7 +51,10 @@ function validatePlayers(entries) {
     diagnostics.total += 1;
     const validation = validateCatalogPlayer(player, documentId);
     if (!validation.valid) {
-      diagnostics.invalid.push({ id: String(documentId ?? player?.id ?? index), reason: validation.reason });
+      diagnostics.invalid.push({
+        id: String(documentId ?? player?.id ?? index),
+        reason: validation.reason,
+      });
       return;
     }
 
@@ -81,7 +84,10 @@ async function loadFirestorePlayerCatalog() {
 
   const currentCatalog = await getDoc(catalogRef());
   if (!currentCatalog.exists()) {
-    throw catalogError("catalog-missing", "The published player catalog is missing.");
+    throw catalogError(
+      "catalog-missing",
+      "The published player catalog is missing.",
+    );
   }
 
   const playersSnapshot = await getDocs(
@@ -115,7 +121,10 @@ function fallbackResult(error, firestoreDiagnostics = emptyDiagnostics()) {
     fallbackUsed: true,
     empty: fallback.players.length === 0,
     error,
-    diagnostics: { firestore: firestoreDiagnostics, fallback: fallback.diagnostics },
+    diagnostics: {
+      firestore: firestoreDiagnostics,
+      fallback: fallback.diagnostics,
+    },
   };
 }
 
@@ -131,12 +140,18 @@ export async function loadPlayerCatalog() {
         fallbackUsed: false,
         empty: false,
         error: null,
-        diagnostics: { firestore: firestore.diagnostics, fallback: emptyDiagnostics() },
+        diagnostics: {
+          firestore: firestore.diagnostics,
+          fallback: emptyDiagnostics(),
+        },
       };
     }
 
     return fallbackResult(
-      catalogError("catalog-empty", "The Firestore player catalog has no valid players."),
+      catalogError(
+        "catalog-empty",
+        "The Firestore player catalog has no valid players.",
+      ),
       firestore.diagnostics,
     );
   } catch (error) {

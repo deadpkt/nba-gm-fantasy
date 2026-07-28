@@ -1,4 +1,7 @@
-import { createCatalogPublication, publishCatalog } from "./catalogPublisher.js";
+import {
+  createCatalogPublication,
+  publishCatalog,
+} from "./catalogPublisher.js";
 
 // This is the server-side orchestration seam. A future scheduled function
 // supplies a provider adapter and a provider fetch function; neither is added

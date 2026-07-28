@@ -130,7 +130,11 @@ function AuthForm({ mode }) {
           </p>
         )}
         <button disabled={submitting}>
-          {submitting ? "Please wait..." : isSignUp ? "Create account" : "Login"}
+          {submitting
+            ? "Please wait..."
+            : isSignUp
+              ? "Create account"
+              : "Login"}
         </button>
       </form>
       <div className="auth-divider">

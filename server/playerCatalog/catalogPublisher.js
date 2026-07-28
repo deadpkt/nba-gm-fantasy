@@ -23,8 +23,14 @@ export function createCatalogPublication({
 
   const playerIds = new Set();
   const playerDocuments = players.map((player, catalogOrder) => {
-    if (!Number.isInteger(player.id) || player.id <= 0 || playerIds.has(player.id)) {
-      throw new Error(`Catalog contains an invalid or duplicate NBA player ID: ${player.id}.`);
+    if (
+      !Number.isInteger(player.id) ||
+      player.id <= 0 ||
+      playerIds.has(player.id)
+    ) {
+      throw new Error(
+        `Catalog contains an invalid or duplicate NBA player ID: ${player.id}.`,
+      );
     }
     playerIds.add(player.id);
 

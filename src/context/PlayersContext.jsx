@@ -1,4 +1,10 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { loadPlayerCatalog } from "../lib/playerRepository";
 
 export const PlayersContext = createContext(null);
