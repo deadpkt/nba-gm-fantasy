@@ -101,6 +101,38 @@ service cloud.firestore {
             'name', 'roster', 'lineup', 'coachStrategy', 'strategy', 'updatedAt'
           ]) || isSingleLeagueResultIncrement());
       }
+
+      match /playerOwnership/{playerId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create: if isLeagueMember(leagueId)
+          && request.auth.uid == request.resource.data.ownerUid
+          && request.resource.data.teamId == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'playerId', 'ownerUid', 'teamId', 'updatedAt'
+          ]);
+        allow delete: if isLeagueMember(leagueId)
+          && resource.data.ownerUid == request.auth.uid;
+      }
+
+      match /trades/{tradeId} {
+        allow get, list: if isLeagueMember(leagueId)
+          && (resource.data.senderUid == request.auth.uid
+            || resource.data.receiverUid == request.auth.uid);
+        allow create: if isLeagueMember(leagueId)
+          && request.resource.data.keys().hasOnly([
+            'leagueId', 'senderUid', 'receiverUid', 'senderTeam', 'receiverTeam',
+            'offeredPlayerIds', 'requestedPlayerIds', 'offeredPlayers',
+            'requestedPlayers', 'status', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.leagueId == leagueId
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.receiverUid != request.auth.uid
+          && get(/databases/$(database)/documents/leagues/$(leagueId))
+            .data.memberIds.hasAny([request.resource.data.receiverUid])
+          && request.resource.data.status == 'pending'
+          && request.resource.data.offeredPlayerIds.size() > 0
+          && request.resource.data.requestedPlayerIds.size() > 0;
+      }
     }
 
     match /matches/{matchId} {

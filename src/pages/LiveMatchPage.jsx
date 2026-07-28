@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { Link, useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
+import { openPlayerDetails } from "../components/player/PlayerDetailsModal";
 import useAuth from "../hooks/useAuth";
 import { db } from "../lib/firebase";
 import {
@@ -219,6 +220,10 @@ function LineupCards({ label, players, stats }) {
             className="live-player"
             style={{ "--player-color": player.color }}
             key={player.id}
+            onClick={() => openPlayerDetails(player)}
+            role="button"
+            tabIndex="0"
+            onKeyDown={(event) => { if (event.key === "Enter") openPlayerDetails(player); }}
           >
             <img src={player.image} alt="" />
             <div>
@@ -252,7 +257,7 @@ function FinalPanel({ game, home, away }) {
         {winner.name} <span>wins the matchup.</span>
       </h2>
       {game.mvp && (
-        <div className="final-mvp">
+        <button type="button" className="final-mvp" onClick={() => openPlayerDetails(game.mvp)}>
           <img src={game.mvp.image} alt={game.mvp.name} />
           <div>
             <span>GAME MVP</span>
@@ -261,7 +266,7 @@ function FinalPanel({ game, home, away }) {
               {game.mvp.position} / {game.mvp.overall} OVR
             </small>
           </div>
-        </div>
+        </button>
       )}
       <div className="final-team-stats">
         <TeamStats label={home.name} stats={game.homeTeamStats} />

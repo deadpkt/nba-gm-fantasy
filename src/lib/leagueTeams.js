@@ -1,5 +1,9 @@
 import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
+import {
+  claimLeaguePlayerOwnership,
+  releaseLeaguePlayerOwnership,
+} from "./playerOwnership";
 import { LINEUP_POSITIONS } from "../utils/team";
 
 export const DEFAULT_LEAGUE_STRATEGY = "balanced";
@@ -59,7 +63,12 @@ export function normalizeLeagueTeam(id, data = {}) {
 const leagueTeamRef = (leagueId, userId) =>
   doc(db, "leagues", leagueId, "teams", userId);
 
-async function updateRosterAndLineup(leagueId, userId, change) {
+async function updateRosterAndLineup(
+  leagueId,
+  userId,
+  change,
+  updateOwnership = null,
+) {
   const teamRef = leagueTeamRef(leagueId, userId);
 
   await runTransaction(db, async (transaction) => {
@@ -72,6 +81,10 @@ async function updateRosterAndLineup(leagueId, userId, change) {
     const nextRoster = change(current.roster);
     const nextLineup = normalizeLeagueLineup(nextRoster, current.lineup);
 
+    if (updateOwnership) {
+      await updateOwnership(transaction, current.roster, nextRoster);
+    }
+
     transaction.update(teamRef, {
       roster: nextRoster,
       lineup: nextLineup,
@@ -81,6 +94,10 @@ async function updateRosterAndLineup(leagueId, userId, change) {
 }
 
 export async function addLeagueTeamPlayer(leagueId, userId, player) {
+  if (player?.id === undefined || player?.id === null) {
+    throw new Error("This player cannot be added to the current roster.");
+  }
+
   await updateRosterAndLineup(leagueId, userId, (roster) => {
     if (
       roster.length >= 5 ||
@@ -89,12 +106,26 @@ export async function addLeagueTeamPlayer(leagueId, userId, player) {
       throw new Error("This player cannot be added to the current roster.");
     }
     return [...roster, player];
+  }, async (transaction) => {
+    await claimLeaguePlayerOwnership(transaction, leagueId, player.id, userId);
   });
 }
 
 export async function removeLeagueTeamPlayer(leagueId, userId, playerId) {
-  await updateRosterAndLineup(leagueId, userId, (roster) =>
-    roster.filter((player) => player.id !== playerId),
+  await updateRosterAndLineup(
+    leagueId,
+    userId,
+    (roster) => roster.filter((player) => player.id !== playerId),
+    async (transaction, roster) => {
+      if (roster.some((player) => player.id === playerId)) {
+        await releaseLeaguePlayerOwnership(
+          transaction,
+          leagueId,
+          playerId,
+          userId,
+        );
+      }
+    },
   );
 }
 

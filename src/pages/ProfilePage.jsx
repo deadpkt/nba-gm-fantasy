@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { updateProfile } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import PageLayout from "../components/PageLayout";
+import { openPlayerDetails } from "../components/player/PlayerDetailsModal";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
@@ -142,7 +143,7 @@ function ProfilePage() {
 
       <section className="settings-roster">
         <div className="settings-card__heading"><div><p className="section-label">SAVED ROSTER</p><h2>Starting five <span>{roster.length}/5 players</span></h2></div><span className="settings-roster__label">FRANCHISE PREVIEW</span></div>
-        {roster.length ? <div className="settings-roster__grid">{roster.map((player) => <article key={player.id} className="settings-roster__player"><img src={player.image} alt="" /><div><span>{player.position} / {player.team}</span><b>{player.name}</b></div><strong>{player.overall}<small>OVR</small></strong></article>)}</div> : <div className="settings-roster__empty">Your selected players will appear here once your franchise is built.</div>}
+        {roster.length ? <div className="settings-roster__grid">{roster.map((player) => <article key={player.id} className="settings-roster__player" onClick={() => openPlayerDetails(player)} role="button" tabIndex="0" onKeyDown={(event) => { if (event.key === "Enter") openPlayerDetails(player); }}><img src={player.image} alt="" /><div><span>{player.position} / {player.team}</span><b>{player.name}</b></div><strong>{player.overall}<small>OVR</small></strong></article>)}</div> : <div className="settings-roster__empty">Your selected players will appear here once your franchise is built.</div>}
       </section>
     </PageLayout>
   );

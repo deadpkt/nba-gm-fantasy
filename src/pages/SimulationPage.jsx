@@ -1,5 +1,6 @@
 import { useState } from "react";
 import PageLayout from "../components/PageLayout";
+import { openPlayerDetails } from "../components/player/PlayerDetailsModal";
 import useAuth from "../hooks/useAuth";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import usePlayers from "../hooks/usePlayers";
@@ -116,7 +117,7 @@ function SimulationPage() {
               </b>
             </div>
           </div>
-          <div className="mvp">
+          <button type="button" className="mvp" onClick={() => openPlayerDetails(result.mvp)}>
             <img src={result.mvp.image} alt={result.mvp.name} />
             <div>
               <span>GAME MVP</span>
@@ -125,7 +126,7 @@ function SimulationPage() {
                 {result.mvp.overall} OVR / {result.mvp.position}
               </small>
             </div>
-          </div>
+          </button>
           <div className="team-stats">
             <Stat
               title="FG%"

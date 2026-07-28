@@ -1,4 +1,5 @@
 import Header from "./Header";
+import PlayerDetailsModal from "./player/PlayerDetailsModal";
 
 function PageLayout({ children }) {
   return (
@@ -8,6 +9,7 @@ function PageLayout({ children }) {
       <Header />
       {children}
       <div className="court-lines court-lines--bottom" aria-hidden="true" />
+      <PlayerDetailsModal />
     </main>
   );
 }
