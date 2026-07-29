@@ -6,7 +6,9 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { createInitialLeagueTeam } from "./leagueTeams";
+import { buildInitialDraftState, draftStateRef } from "./draft";
+import { createInitialLeagueTeam, isLeagueTeamSeasonReady } from "./leagueTeams";
+import { LEAGUE_STATUS } from "./leagueStatuses";
 
 const createLeagueCode = () =>
   crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
@@ -26,8 +28,9 @@ export async function createLeague({ user, name, maxMembers }) {
     name: name.trim(),
     commissionerUid: user.uid,
     memberIds: [user.uid],
+    readyMemberIds: [],
     maxMembers,
-    status: "lobby",
+    status: LEAGUE_STATUS.LOBBY,
     season: 1,
     inviteCode: leagueId,
     createdAt: serverTimestamp(),
@@ -38,6 +41,8 @@ export async function createLeague({ user, name, maxMembers }) {
     displayName: displayName(user),
     joinedAt: serverTimestamp(),
     role: "commissioner",
+    ready: false,
+    updatedAt: serverTimestamp(),
   });
   batch.set(teamRef, createInitialLeagueTeam(user));
   batch.set(
@@ -63,7 +68,7 @@ export async function joinLeague({ user, inviteCode }) {
     }
 
     const league = leagueSnapshot.data();
-    if (league.status !== "lobby") {
+    if (league.status !== LEAGUE_STATUS.LOBBY) {
       throw new Error("This league is no longer accepting new members.");
     }
     if (
@@ -83,6 +88,8 @@ export async function joinLeague({ user, inviteCode }) {
         displayName: displayName(user),
         joinedAt: serverTimestamp(),
         role: "member",
+        ready: false,
+        updatedAt: serverTimestamp(),
       });
       transaction.set(teamRef, createInitialLeagueTeam(user));
     }
@@ -108,5 +115,235 @@ export async function selectLeague(userId, leagueId) {
       { activeLeagueId: leagueId, updatedAt: serverTimestamp() },
       { merge: true },
     );
+  });
+}
+
+export async function setLeagueMemberReady({ leagueId, userId, ready }) {
+  const leagueRef = doc(db, "leagues", leagueId);
+  const memberRef = doc(db, "leagues", leagueId, "members", userId);
+
+  await runTransaction(db, async (transaction) => {
+    const [leagueSnapshot, memberSnapshot] = await Promise.all([
+      transaction.get(leagueRef),
+      transaction.get(memberRef),
+    ]);
+    if (!leagueSnapshot.exists() || !memberSnapshot.exists()) {
+      throw new Error("This league membership is unavailable.");
+    }
+    if (leagueSnapshot.data().status !== LEAGUE_STATUS.LOBBY) {
+      throw new Error("Readiness can only change while the league is in the lobby.");
+    }
+
+    const league = leagueSnapshot.data();
+    const readyMemberIds = Array.isArray(league.readyMemberIds)
+      ? league.readyMemberIds
+      : [];
+    const nextReadyMemberIds = ready
+      ? [...new Set([...readyMemberIds, userId])]
+      : readyMemberIds.filter((memberId) => memberId !== userId);
+
+    transaction.update(memberRef, {
+      ready: Boolean(ready),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(leagueRef, {
+      readyMemberIds: nextReadyMemberIds,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+export async function startLeagueDraft({ leagueId, userId }) {
+  const leagueRef = doc(db, "leagues", leagueId);
+
+  await runTransaction(db, async (transaction) => {
+    const leagueSnapshot = await transaction.get(leagueRef);
+    if (!leagueSnapshot.exists()) throw new Error("This league is unavailable.");
+
+    const league = leagueSnapshot.data();
+    if (league.commissionerUid !== userId) {
+      throw new Error("Only the commissioner can start the draft phase.");
+    }
+    if (league.status !== LEAGUE_STATUS.LOBBY) {
+      throw new Error("The draft phase can only start from the lobby.");
+    }
+    if (league.memberIds.length !== league.maxMembers) {
+      throw new Error("Every league slot must be filled before the draft can start.");
+    }
+    const readyMemberIds = Array.isArray(league.readyMemberIds)
+      ? league.readyMemberIds
+      : [];
+    if (
+      readyMemberIds.length !== league.memberIds.length ||
+      !league.memberIds.every((memberId) => readyMemberIds.includes(memberId))
+    ) {
+      throw new Error("Every league member must be ready before the draft can start.");
+    }
+
+    const stateRef = draftStateRef(leagueId);
+    const [draftSnapshot, ...memberAndTeamSnapshots] = await Promise.all([
+      transaction.get(stateRef),
+      ...league.memberIds.map((memberId) =>
+        transaction.get(doc(db, "leagues", leagueId, "members", memberId)),
+      ),
+      ...league.memberIds.map((memberId) =>
+        transaction.get(doc(db, "leagues", leagueId, "teams", memberId)),
+      ),
+    ]);
+    if (draftSnapshot.exists()) {
+      throw new Error("This league draft has already been initialized.");
+    }
+    const memberSnapshots = memberAndTeamSnapshots.slice(
+      0,
+      league.memberIds.length,
+    );
+    const teamSnapshots = memberAndTeamSnapshots.slice(league.memberIds.length);
+    if (memberSnapshots.some((snapshot) => !snapshot.exists() || snapshot.data().ready !== true)) {
+      throw new Error("Every league member must be ready before the draft can start.");
+    }
+    if (
+      teamSnapshots.some(
+        (snapshot) =>
+          !snapshot.exists() || (snapshot.data().roster || []).length !== 0,
+      )
+    ) {
+      throw new Error(
+        "Every franchise roster must be empty before the shared draft starts.",
+      );
+    }
+
+    transaction.update(leagueRef, {
+      status: LEAGUE_STATUS.DRAFTING,
+      draftStartedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(
+      stateRef,
+      buildInitialDraftState(leagueId, [...league.memberIds]),
+    );
+  });
+}
+
+export async function startLeagueSeason({ leagueId, userId }) {
+  const leagueRef = doc(db, "leagues", leagueId);
+
+  await runTransaction(db, async (transaction) => {
+    const leagueSnapshot = await transaction.get(leagueRef);
+    if (!leagueSnapshot.exists()) throw new Error("This league is unavailable.");
+
+    const league = leagueSnapshot.data();
+    if (league.commissionerUid !== userId) {
+      throw new Error("Only the commissioner can start the season.");
+    }
+    if (league.status !== LEAGUE_STATUS.SEASON_READY) {
+      throw new Error("The season can only start after the draft is complete.");
+    }
+
+    const teamSnapshots = await Promise.all(
+      league.memberIds.map((memberId) =>
+        transaction.get(doc(db, "leagues", leagueId, "teams", memberId)),
+      ),
+    );
+    if (
+      teamSnapshots.some(
+        (snapshot) =>
+          !snapshot.exists() || !isLeagueTeamSeasonReady(snapshot.data()),
+      )
+    ) {
+      throw new Error(
+        "Every franchise needs exactly five drafted players and a complete valid lineup.",
+      );
+    }
+
+    const readyIds = Array.isArray(league.seasonReadyMemberIds)
+      ? league.seasonReadyMemberIds
+      : [];
+    if (
+      readyIds.length !== league.memberIds.length ||
+      !league.memberIds.every((memberId) => readyIds.includes(memberId))
+    ) {
+      throw new Error("Every franchise must be ready before the season can start.");
+    }
+
+    transaction.update(leagueRef, {
+      status: LEAGUE_STATUS.REGULAR_SEASON,
+      seasonStartedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+export async function leaveLeague({ leagueId, userId }) {
+  const leagueRef = doc(db, "leagues", leagueId);
+  const memberRef = doc(db, "leagues", leagueId, "members", userId);
+  const teamRef = doc(db, "leagues", leagueId, "teams", userId);
+  const userRef = doc(db, "users", userId);
+
+  await runTransaction(db, async (transaction) => {
+    const [leagueSnapshot, memberSnapshot, teamSnapshot, userSnapshot] =
+      await Promise.all([
+        transaction.get(leagueRef),
+        transaction.get(memberRef),
+        transaction.get(teamRef),
+        transaction.get(userRef),
+      ]);
+    if (!leagueSnapshot.exists() || !memberSnapshot.exists()) {
+      throw new Error("This league membership is unavailable.");
+    }
+
+    const league = leagueSnapshot.data();
+    if (league.status !== LEAGUE_STATUS.LOBBY) {
+      throw new Error("You can only leave while the league is in the lobby.");
+    }
+    if (league.commissionerUid === userId) {
+      throw new Error("The commissioner must cancel the league instead.");
+    }
+    if ((teamSnapshot.data()?.roster || []).length) {
+      throw new Error("Clear this franchise roster before leaving the league.");
+    }
+
+    transaction.update(leagueRef, {
+      memberIds: league.memberIds.filter((memberId) => memberId !== userId),
+      readyMemberIds: (league.readyMemberIds || []).filter(
+        (memberId) => memberId !== userId,
+      ),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.delete(memberRef);
+    if (teamSnapshot.exists()) transaction.delete(teamRef);
+    if (userSnapshot.data()?.activeLeagueId === leagueId) {
+      transaction.update(userRef, {
+        activeLeagueId: null,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  });
+}
+
+export async function cancelLeague({ leagueId, userId }) {
+  const leagueRef = doc(db, "leagues", leagueId);
+  await runTransaction(db, async (transaction) => {
+    const leagueSnapshot = await transaction.get(leagueRef);
+    if (!leagueSnapshot.exists()) throw new Error("This league is unavailable.");
+
+    const league = leagueSnapshot.data();
+    if (league.commissionerUid !== userId) {
+      throw new Error("Only the commissioner can cancel this league.");
+    }
+    if (league.status !== LEAGUE_STATUS.LOBBY) {
+      throw new Error("A league can only be cancelled while it is in the lobby.");
+    }
+
+    transaction.update(leagueRef, {
+      status: LEAGUE_STATUS.CANCELLED,
+      cancelledAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    league.memberIds.forEach((memberId) => {
+      transaction.update(doc(db, "users", memberId), {
+        activeLeagueId: null,
+        updatedAt: serverTimestamp(),
+      });
+    });
   });
 }

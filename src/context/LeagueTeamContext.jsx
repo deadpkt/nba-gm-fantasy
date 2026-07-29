@@ -16,13 +16,15 @@ import {
   recordLeagueTeamResult,
   removeLeagueTeamPlayer,
   setLeagueTeamStrategy,
+  syncLeagueTeamSeasonReadiness,
 } from "../lib/leagueTeams";
+import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 
 export const LeagueTeamContext = createContext(null);
 
 export function LeagueTeamProvider({ children }) {
   const { user, firebaseEnabled } = useAuth();
-  const { activeLeagueId } = useLeague();
+  const { activeLeagueId, activeLeague } = useLeague();
   const [leagueTeam, setLeagueTeam] = useState(null);
   const [leagueTeamLoading, setLeagueTeamLoading] = useState(true);
   const [leagueTeamError, setLeagueTeamError] = useState(null);
@@ -63,6 +65,34 @@ export function LeagueTeamProvider({ children }) {
       },
     );
   }, [activeLeagueId, firebaseEnabled, user]);
+
+  useEffect(() => {
+    if (
+      !user ||
+      !activeLeagueId ||
+      !leagueTeam ||
+      activeLeague?.status !== LEAGUE_STATUS.SEASON_READY
+    ) {
+      return;
+    }
+
+    const readyIds = activeLeague.seasonReadyMemberIds || [];
+    const roster = leagueTeam.roster || [];
+    const lineup = leagueTeam.lineup || {};
+    const assignedIds = Object.values(lineup).filter(Boolean);
+    const locallyReady =
+      roster.length === 5 &&
+      assignedIds.length === 5 &&
+      new Set(assignedIds).size === 5 &&
+      assignedIds.every((playerId) =>
+        roster.some((player) => player.id === playerId),
+      );
+    if (readyIds.includes(user.uid) === locallyReady) return;
+
+    void syncLeagueTeamSeasonReadiness(activeLeagueId, user.uid).catch(
+      (error) => console.error("Could not synchronize season readiness:", error),
+    );
+  }, [activeLeague, activeLeagueId, leagueTeam, user]);
 
   const requireActiveTeam = useCallback(() => {
     if (!user || !activeLeagueId) {

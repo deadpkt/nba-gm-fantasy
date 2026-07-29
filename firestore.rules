@@ -37,6 +37,136 @@ service cloud.firestore {
           + request.resource.data.record.losses - resource.data.record.losses == 1;
     }
 
+    function readyMemberIds(leagueData) {
+      return leagueData.get('readyMemberIds', []);
+    }
+
+    function seasonReadyMemberIds(leagueData) {
+      return leagueData.get('seasonReadyMemberIds', []);
+    }
+
+    function rosterHasPlayer(team, playerId) {
+      return playerId != null
+        && (team.roster[0].id == playerId
+          || team.roster[1].id == playerId
+          || team.roster[2].id == playerId
+          || team.roster[3].id == playerId
+          || team.roster[4].id == playerId);
+    }
+
+    function hasValidFivePlayerLineup(team) {
+      return team.roster.size() == 5
+        && team.lineup.keys().hasOnly(['PG', 'SG', 'SF', 'PF', 'C'])
+        && rosterHasPlayer(team, team.lineup.PG)
+        && rosterHasPlayer(team, team.lineup.SG)
+        && rosterHasPlayer(team, team.lineup.SF)
+        && rosterHasPlayer(team, team.lineup.PF)
+        && rosterHasPlayer(team, team.lineup.C)
+        && team.lineup.PG != team.lineup.SG
+        && team.lineup.PG != team.lineup.SF
+        && team.lineup.PG != team.lineup.PF
+        && team.lineup.PG != team.lineup.C
+        && team.lineup.SG != team.lineup.SF
+        && team.lineup.SG != team.lineup.PF
+        && team.lineup.SG != team.lineup.C
+        && team.lineup.SF != team.lineup.PF
+        && team.lineup.SF != team.lineup.C
+        && team.lineup.PF != team.lineup.C;
+    }
+
+    function isOwnSeasonReadinessUpdate(leagueId) {
+      let before = seasonReadyMemberIds(resource.data);
+      let after = seasonReadyMemberIds(request.resource.data);
+      let teamAfter = getAfter(/databases/$(database)/documents/leagues/$(leagueId)/teams/$(request.auth.uid)).data;
+      return signedIn()
+        && resource.data.status == 'season_ready'
+        && request.resource.data.status == 'season_ready'
+        && request.auth.uid in resource.data.memberIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'seasonReadyMemberIds', 'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && ((hasValidFivePlayerLineup(teamAfter)
+            && request.auth.uid in after
+            && after.hasAll(before)
+            && after.size() == before.size() + (request.auth.uid in before ? 0 : 1))
+          || (!hasValidFivePlayerLineup(teamAfter)
+            && !(request.auth.uid in after)
+            && before.hasAll(after)
+            && after.size() == before.size() - (request.auth.uid in before ? 1 : 0)));
+    }
+
+    function isSeasonReadyLineupUpdate(leagueId, userId) {
+      let league = get(/databases/$(database)/documents/leagues/$(leagueId)).data;
+      let leagueAfter = getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data;
+      return league.status == 'season_ready'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lineup', 'updatedAt'
+        ])
+        && request.resource.data.roster == resource.data.roster
+        && request.resource.data.updatedAt == request.time
+        && ((hasValidFivePlayerLineup(request.resource.data)
+            && userId in seasonReadyMemberIds(leagueAfter))
+          || (!hasValidFivePlayerLineup(request.resource.data)
+            && !(userId in seasonReadyMemberIds(leagueAfter))));
+    }
+
+    function isInSeasonTeamConfigurationUpdate(leagueId) {
+      let status = get(/databases/$(database)/documents/leagues/$(leagueId)).data.status;
+      return status in ['regular_season', 'playoffs']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'lineup', 'coachStrategy', 'strategy', 'updatedAt'
+        ]);
+    }
+
+    function draftAfter(leagueId) {
+      return getAfter(/databases/$(database)/documents/leagues/$(leagueId)/draft/state).data;
+    }
+
+    function isCanonicalDraftPlayer(player) {
+      let catalog = get(/databases/$(database)/documents/playerCatalogs/current/players/$(player.id)).data;
+      return player.keys().hasOnly([
+          'id', 'name', 'position', 'team', 'overall', 'image', 'color', 'stats'
+        ])
+        && player.id == catalog.id
+        && player.name == catalog.name
+        && player.position == catalog.position
+        && player.team == catalog.team
+        && player.overall == catalog.overall
+        && player.image == catalog.image
+        && player.color == catalog.get('color', null)
+        && player.stats == catalog.stats;
+    }
+
+    function isDraftRosterAppend(leagueId, userId) {
+      let draft = draftAfter(leagueId);
+      let nextPlayer = request.resource.data.roster[request.resource.data.roster.size() - 1];
+      return get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'drafting'
+        && draft.status in ['active', 'completed']
+        && draft.lastPick.ownerUid == userId
+        && draft.lastPick.playerId == nextPlayer.id
+        && draft.lastPick.overallPick == draft.picksMade
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'roster', 'lineup', 'updatedAt'
+        ])
+        && request.resource.data.roster.size() == resource.data.roster.size() + 1
+        && request.resource.data.roster.size() <= 5
+        && request.resource.data.roster.hasAll(resource.data.roster)
+        && isCanonicalDraftPlayer(nextPlayer)
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isCancelledLeagueReferenceCleanup() {
+      return signedIn()
+        && resource.data.activeLeagueId != null
+        && request.resource.data.activeLeagueId == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'activeLeagueId', 'updatedAt'
+        ])
+        && getAfter(/databases/$(database)/documents/leagues/$(resource.data.activeLeagueId)).data.status == 'cancelled'
+        && getAfter(/databases/$(database)/documents/leagues/$(resource.data.activeLeagueId)).data.commissionerUid == request.auth.uid;
+    }
+
     // The catalog is published by a trusted server-side workflow. Clients can
     // read it but must never be able to alter the shared player pool.
     match /playerCatalogs/{catalogId} {
@@ -51,7 +181,8 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn() && request.auth.uid == userId && isNewProfile();
       allow update: if signedIn() && request.auth.uid == userId
-        && onlyProfileFieldsChanged();
+        && onlyProfileFieldsChanged()
+        || isCancelledLeagueReferenceCleanup();
 
       match /matchHistory/{matchId} {
         allow read: if signedIn() && request.auth.uid == userId;
@@ -68,9 +199,49 @@ service cloud.firestore {
         && request.resource.data.commissionerUid == request.auth.uid
         && request.resource.data.memberIds.size() == 1
         && request.resource.data.memberIds[0] == request.auth.uid
+        && request.resource.data.readyMemberIds.size() == 0
         && request.resource.data.status == 'lobby';
       allow update: if (isCommissioner(leagueId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+          && resource.data.status == 'lobby'
+          && request.resource.data.status == 'drafting'
+          && resource.data.memberIds.size() == resource.data.maxMembers
+          && readyMemberIds(resource.data).size() == resource.data.memberIds.size()
+          && readyMemberIds(resource.data).hasAll(resource.data.memberIds)
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)/draft/state).data.status == 'active'
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)/draft/state).data.picksMade == 0
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)/draft/state).data.draftOrder == resource.data.memberIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'draftStartedAt', 'updatedAt'
+          ]))
+        || (signedIn()
+          && request.auth.uid in resource.data.memberIds
+          && resource.data.status == 'drafting'
+          && request.resource.data.status == 'season_ready'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updatedAt'
+          ])
+          && draftAfter(leagueId).status == 'completed'
+          && draftAfter(leagueId).picksMade
+            == draftAfter(leagueId).draftOrder.size() * draftAfter(leagueId).totalRounds
+          && draftAfter(leagueId).updatedAt == request.time
+          && request.resource.data.updatedAt == request.time)
+        || (isCommissioner(leagueId)
+          && resource.data.status == 'season_ready'
+          && request.resource.data.status == 'regular_season'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'seasonStartedAt', 'updatedAt'
+          ])
+          && seasonReadyMemberIds(resource.data).size() == resource.data.memberIds.size()
+          && seasonReadyMemberIds(resource.data).hasAll(resource.data.memberIds)
+          && request.resource.data.seasonStartedAt == request.time
+          && request.resource.data.updatedAt == request.time)
+        || isOwnSeasonReadinessUpdate(leagueId)
+        || (isCommissioner(leagueId)
+          && resource.data.status == 'lobby'
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'cancelledAt', 'updatedAt'
+          ]))
         || (signedIn()
           && resource.data.status == 'lobby'
           && !(request.auth.uid in resource.data.memberIds)
@@ -78,17 +249,58 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'updatedAt'])
           && request.resource.data.memberIds.hasAll(resource.data.memberIds)
           && request.resource.data.memberIds.hasAll([request.auth.uid])
-          && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1);
+          && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1)
+        || (signedIn()
+          && resource.data.status == 'lobby'
+          && request.auth.uid in resource.data.memberIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'readyMemberIds', 'updatedAt'
+          ])
+          && ((!(request.auth.uid in readyMemberIds(resource.data))
+              && request.auth.uid in request.resource.data.readyMemberIds
+              && request.resource.data.readyMemberIds.hasAll(readyMemberIds(resource.data))
+              && request.resource.data.readyMemberIds.size() == readyMemberIds(resource.data).size() + 1)
+            || (request.auth.uid in readyMemberIds(resource.data)
+              && !(request.auth.uid in request.resource.data.readyMemberIds)
+              && readyMemberIds(resource.data).hasAll(request.resource.data.readyMemberIds)
+              && request.resource.data.readyMemberIds.size() == readyMemberIds(resource.data).size() - 1)))
+        || (signedIn()
+          && resource.data.status == 'lobby'
+          && request.auth.uid != resource.data.commissionerUid
+          && request.auth.uid in resource.data.memberIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'memberIds', 'readyMemberIds', 'updatedAt'
+          ])
+          && resource.data.memberIds.hasAll(request.resource.data.memberIds)
+          && !(request.auth.uid in request.resource.data.memberIds)
+          && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
+          && readyMemberIds(resource.data).hasAll(request.resource.data.readyMemberIds)
+          && !(request.auth.uid in request.resource.data.readyMemberIds)
+          && request.resource.data.readyMemberIds.size()
+            == readyMemberIds(resource.data).size()
+              - (request.auth.uid in readyMemberIds(resource.data) ? 1 : 0));
 
       match /members/{userId} {
         allow get, list: if isLeagueMember(leagueId);
         allow create: if signedIn() && request.auth.uid == userId
           && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds.hasAll([userId])
           && request.resource.data.uid == userId
+          && request.resource.data.ready == false
           && (request.resource.data.role == 'member'
             || (request.resource.data.role == 'commissioner'
               && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.commissionerUid == userId));
-        allow update: if isCommissioner(leagueId);
+        allow update: if signedIn()
+          && request.auth.uid == userId
+          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
+          && request.resource.data.ready is bool
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'ready', 'updatedAt'
+          ]);
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
+          && request.auth.uid != get(/databases/$(database)/documents/leagues/$(leagueId)).data.commissionerUid
+          && !(request.auth.uid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds);
       }
 
       match /teams/{userId} {
@@ -97,21 +309,125 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds.hasAll([userId])
           && request.resource.data.ownerUid == userId;
         allow update: if isLeagueMember(leagueId) && request.auth.uid == userId
-          && (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'name', 'roster', 'lineup', 'coachStrategy', 'strategy', 'updatedAt'
-          ]) || isSingleLeagueResultIncrement());
+          && (isSeasonReadyLineupUpdate(leagueId, userId)
+            || isInSeasonTeamConfigurationUpdate(leagueId)
+            || isSingleLeagueResultIncrement()
+            || isDraftRosterAppend(leagueId, userId));
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && resource.data.ownerUid == userId
+          && resource.data.roster.size() == 0
+          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
+          && !(request.auth.uid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds);
       }
 
       match /playerOwnership/{playerId} {
         allow get, list: if isLeagueMember(leagueId);
         allow create: if isLeagueMember(leagueId)
+          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'drafting'
           && request.auth.uid == request.resource.data.ownerUid
           && request.resource.data.teamId == request.auth.uid
           && request.resource.data.keys().hasOnly([
             'playerId', 'ownerUid', 'teamId', 'updatedAt'
-          ]);
-        allow delete: if isLeagueMember(leagueId)
-          && resource.data.ownerUid == request.auth.uid;
+          ])
+          && request.resource.data.playerId == draftAfter(leagueId).lastPick.playerId
+          && request.resource.data.ownerUid == draftAfter(leagueId).lastPick.ownerUid
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      match /draft/{draftId} {
+        allow get: if draftId == 'state' && isLeagueMember(leagueId);
+        allow create: if draftId == 'state'
+          && isCommissioner(leagueId)
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'drafting'
+          && request.resource.data.keys().hasOnly([
+            'leagueId', 'status', 'draftOrder', 'currentRound',
+            'currentPickInRound', 'currentPickNumber', 'currentDrafterUid',
+            'picksMade', 'totalRounds', 'lastPick', 'pickDeadlineAt',
+            'startedAt', 'updatedAt', 'completedAt'
+          ])
+          && request.resource.data.leagueId == leagueId
+          && request.resource.data.status == 'active'
+          && request.resource.data.draftOrder
+            == getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds
+          && request.resource.data.currentRound == 1
+          && request.resource.data.currentPickInRound == 1
+          && request.resource.data.currentPickNumber == 1
+          && request.resource.data.currentDrafterUid == request.resource.data.draftOrder[0]
+          && request.resource.data.picksMade == 0
+          && request.resource.data.totalRounds == 5
+          && request.resource.data.lastPick == null
+          && request.resource.data.pickDeadlineAt == null
+          && request.resource.data.startedAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.completedAt == null;
+        allow update: if draftId == 'state'
+          && isLeagueMember(leagueId)
+          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'drafting'
+          && resource.data.status == 'active'
+          && resource.data.currentDrafterUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'currentRound', 'currentPickInRound', 'currentPickNumber',
+            'currentDrafterUid', 'picksMade', 'lastPick', 'updatedAt', 'completedAt'
+          ])
+          && request.resource.data.picksMade == resource.data.picksMade + 1
+          && request.resource.data.lastPick.ownerUid == request.auth.uid
+          && request.resource.data.lastPick.overallPick == resource.data.currentPickNumber
+          && request.resource.data.lastPick.round == resource.data.currentRound
+          && request.resource.data.lastPick.pickInRound == resource.data.currentPickInRound
+          && request.resource.data.lastPick.pickedAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && ((request.resource.data.picksMade
+                == resource.data.draftOrder.size() * resource.data.totalRounds
+              && request.resource.data.status == 'completed'
+              && request.resource.data.currentDrafterUid == null
+              && request.resource.data.currentRound == resource.data.currentRound
+              && request.resource.data.currentPickInRound == resource.data.currentPickInRound
+              && request.resource.data.currentPickNumber == resource.data.currentPickNumber
+              && request.resource.data.completedAt == request.time)
+            || (request.resource.data.picksMade
+                < resource.data.draftOrder.size() * resource.data.totalRounds
+              && request.resource.data.status == 'active'
+              && request.resource.data.currentPickNumber == resource.data.currentPickNumber + 1
+              && request.resource.data.completedAt == null
+              && ((resource.data.currentPickInRound < resource.data.draftOrder.size()
+                  && request.resource.data.currentRound == resource.data.currentRound
+                  && request.resource.data.currentPickInRound == resource.data.currentPickInRound + 1
+                  && request.resource.data.currentDrafterUid
+                    == resource.data.draftOrder[
+                      resource.data.currentRound % 2 == 1
+                        ? request.resource.data.currentPickInRound - 1
+                        : resource.data.draftOrder.size() - request.resource.data.currentPickInRound
+                    ])
+                || (resource.data.currentPickInRound == resource.data.draftOrder.size()
+                  && request.resource.data.currentRound == resource.data.currentRound + 1
+                  && request.resource.data.currentPickInRound == 1
+                  && request.resource.data.currentDrafterUid
+                    == resource.data.draftOrder[
+                      request.resource.data.currentRound % 2 == 1
+                        ? 0
+                        : resource.data.draftOrder.size() - 1
+                    ]))));
+
+        match /picks/{playerId} {
+          allow get, list: if isLeagueMember(leagueId);
+          allow create: if isLeagueMember(leagueId)
+            && request.resource.data.keys().hasOnly([
+              'leagueId', 'playerId', 'player', 'ownerUid', 'overallPick',
+              'round', 'pickInRound', 'pickedAt'
+            ])
+            && request.resource.data.leagueId == leagueId
+            && request.resource.data.playerId == request.resource.data.player.id
+            && request.resource.data.ownerUid == request.auth.uid
+            && request.resource.data.playerId == draftAfter(leagueId).lastPick.playerId
+            && request.resource.data.ownerUid == draftAfter(leagueId).lastPick.ownerUid
+            && request.resource.data.overallPick == draftAfter(leagueId).lastPick.overallPick
+            && request.resource.data.round == draftAfter(leagueId).lastPick.round
+            && request.resource.data.pickInRound == draftAfter(leagueId).lastPick.pickInRound
+            && request.resource.data.pickedAt == request.time
+            && isCanonicalDraftPlayer(request.resource.data.player);
+        }
       }
 
       match /trades/{tradeId} {

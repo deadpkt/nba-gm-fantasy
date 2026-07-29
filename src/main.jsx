@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { LeagueProvider } from "./context/LeagueContext";
 import { LeagueTeamProvider } from "./context/LeagueTeamContext";
+import { DraftProvider } from "./context/DraftContext";
 import { PlayersProvider } from "./context/PlayersContext";
 import { TeamProvider } from "./context/TeamContext";
 import "./index.css";
@@ -18,7 +19,9 @@ createRoot(document.getElementById("root")).render(
           <TeamProvider>
             <LeagueProvider>
               <LeagueTeamProvider>
-                <App />
+                <DraftProvider>
+                  <App />
+                </DraftProvider>
               </LeagueTeamProvider>
             </LeagueProvider>
           </TeamProvider>

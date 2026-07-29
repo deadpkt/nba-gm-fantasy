@@ -1,36 +1,66 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
+import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
+import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 import NotificationDropdown from "./notifications/NotificationDropdown";
 
-const navigationGroups = [
-  {
-    label: "Franchise",
-    icon: "◈",
-    items: [
-      { to: "/my-team", label: "My Team", icon: "◈", team: true },
-      { to: "/league/draft", label: "Draft Center", icon: "⌁" },
-      { to: "/trade-center", label: "Trade Center", icon: "⇄" },
-      { to: "/free-agency", label: "Free Agency", icon: "◇" },
-      { to: "/contracts", label: "Contracts", icon: "¤" },
-    ],
-  },
-  {
-    label: "League",
+function getNavigationGroups(activeLeagueId, status) {
+  const leagueItem = {
+    to: activeLeagueId ? `/league/${activeLeagueId}` : "/league",
+    label: activeLeagueId ? "League Dashboard" : "Create / Join League",
     icon: "◇",
-    items: [
-      { to: "/league", label: "League", icon: "◇" },
-      { to: "/season", label: "Season", icon: "◌" },
-      { to: "/awards", label: "Awards", icon: "★" },
-      { to: "/achievements", label: "Achievements", icon: "♛" },
-      { to: "/activity", label: "Activity", icon: "⌁" },
-    ],
-  },
-];
+  };
+
+  if (!activeLeagueId || status === LEAGUE_STATUS.LOBBY) {
+    return [{ label: "League", icon: "◇", items: [leagueItem] }];
+  }
+  if (status === LEAGUE_STATUS.DRAFTING) {
+    return [
+      {
+        label: "Franchise",
+        icon: "◈",
+        items: [{ to: "/league/draft", label: "Draft Center", icon: "⌁" }],
+      },
+      { label: "League", icon: "◇", items: [leagueItem] },
+    ];
+  }
+
+  if (status === LEAGUE_STATUS.SEASON_READY) {
+    return [
+      {
+        label: "Franchise",
+        icon: "◈",
+        items: [{ to: "/my-team", label: "My Team", icon: "◈", team: true }],
+      },
+      { label: "League", icon: "◇", items: [leagueItem] },
+    ];
+  }
+
+  const tradeAvailable = status === LEAGUE_STATUS.REGULAR_SEASON;
+  return [
+    {
+      label: "Franchise",
+      icon: "◈",
+      items: [
+        { to: "/my-team", label: "My Team", icon: "◈", team: true },
+        ...(tradeAvailable
+          ? [{ to: "/trade-center", label: "Trade Center", icon: "⇄" }]
+          : []),
+      ],
+    },
+    {
+      label: "League",
+      icon: "◇",
+      items: [leagueItem],
+    },
+  ];
+}
 
 function Header() {
   const { leagueTeam, record } = useLeagueTeam();
+  const { activeLeagueId, activeLeague } = useLeague();
   const { user, logout } = useAuth();
   const location = useLocation();
   const headerRef = useRef(null);
@@ -67,6 +97,19 @@ function Header() {
     .toUpperCase();
   const teamName = leagueTeam?.name || "Franchise setup";
   const userName = user?.displayName || user?.email?.split("@")[0] || "GM";
+  const navigableLeagueId =
+    activeLeague && activeLeague.status !== LEAGUE_STATUS.CANCELLED
+      ? activeLeagueId
+      : null;
+  const navigationGroups = getNavigationGroups(
+    navigableLeagueId,
+    activeLeague?.status,
+  );
+  const gamesAvailable = [
+    LEAGUE_STATUS.REGULAR_SEASON,
+    LEAGUE_STATUS.PLAYOFFS,
+  ].includes(activeLeague?.status);
+  const notificationsAvailable = false;
 
   return (
     <header className="site-header" ref={headerRef}>
@@ -171,21 +214,21 @@ function Header() {
               </div>
             );
           })}
-          <NavLink
-            to="/games"
-            className={({ isActive }) =>
-              `dashboard-nav__link ${isActive ? "active" : ""}`
-            }
-            onClick={closeNavigation}
-          >
-            <span className="dashboard-nav__icon" aria-hidden="true">
-              ▶
-            </span>
-            <span>Games</span>
-          </NavLink>
+          {gamesAvailable && (
+            <NavLink
+              to="/games"
+              className={({ isActive }) =>
+                `dashboard-nav__link ${isActive ? "active" : ""}`
+              }
+              onClick={closeNavigation}
+            >
+              <span className="dashboard-nav__icon" aria-hidden="true">▶</span>
+              <span>Games</span>
+            </NavLink>
+          )}
         </nav>
         <div className="user-nav">
-          <div className="notification-menu">
+          {notificationsAvailable && <div className="notification-menu">
             <button
               className="notification-button"
               type="button"
@@ -211,7 +254,7 @@ function Header() {
                 onNavigate={() => setNotificationsOpen(false)}
               />
             )}
-          </div>
+          </div>}
           <div className="profile-menu">
             <button
               className="header-profile"
