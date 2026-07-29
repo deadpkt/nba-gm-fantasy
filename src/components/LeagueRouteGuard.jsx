@@ -64,13 +64,18 @@ function LeagueRouteGuard({
   }
 
   if (allowedStatuses && !allowedStatuses.includes(activeLeague?.status)) {
+    const draftJustCompleted =
+      location.pathname === "/league/draft" &&
+      activeLeague?.status === LEAGUE_STATUS.SEASON_READY;
     return (
       <Navigate
         to={phaseDestination}
         replace
         state={{
           from: location,
-          leagueAccessMessage: `That page is locked while the league is in the ${activeLeague?.status || "unavailable"} phase.`,
+          leagueAccessMessage: draftJustCompleted
+            ? "Draft Complete — Set Your Starting Lineup."
+            : `That page is locked while the league is in the ${activeLeague?.status || "unavailable"} phase.`,
         }}
       />
     );

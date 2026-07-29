@@ -12,7 +12,9 @@ function PlayerCard({
       style={{ "--accent-color": color }}
       onClick={() => openPlayerDetails(player)}
       onKeyDown={(event) => {
-        if (event.key === "Enter") openPlayerDetails(player);
+        if (event.target === event.currentTarget && event.key === "Enter") {
+          openPlayerDetails(player);
+        }
       }}
       role="button"
       tabIndex="0"
@@ -52,8 +54,12 @@ function PlayerCard({
         {onAction && (
           <button
             type="button"
-            onClick={() => onAction(player)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction(player);
+            }}
             onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
             disabled={disabled}
           >
             {actionLabel} <span>{actionLabel === "Remove" ? "x" : "+"}</span>

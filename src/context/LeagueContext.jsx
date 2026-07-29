@@ -26,32 +26,32 @@ export function LeagueProvider({ children }) {
   const { user, firebaseEnabled } = useAuth();
   const { activeLeagueId, profileLoading } = useTeam();
   const [activeLeague, setActiveLeague] = useState(null);
+  const [resolvedLeagueId, setResolvedLeagueId] = useState(null);
   const [members, setMembers] = useState([]);
   const [teams, setTeams] = useState([]);
-  const [leagueLoading, setLeagueLoading] = useState(true);
   const [leagueError, setLeagueError] = useState(null);
+  const leagueLoading =
+    profileLoading ||
+    Boolean(activeLeagueId && resolvedLeagueId !== activeLeagueId);
+  const resolvedActiveLeague =
+    activeLeagueId && resolvedLeagueId === activeLeagueId
+      ? activeLeague
+      : null;
 
   useEffect(() => {
     if (!user || !firebaseEnabled || profileLoading || !activeLeagueId) {
       setActiveLeague(null);
+      setResolvedLeagueId(null);
       setMembers([]);
       setTeams([]);
       setLeagueError(null);
-      setLeagueLoading(profileLoading);
       return undefined;
     }
 
     setActiveLeague(null);
     setMembers([]);
     setTeams([]);
-    setLeagueLoading(true);
     setLeagueError(null);
-    let leagueLoaded = false;
-    let membersLoaded = false;
-    let teamsLoaded = false;
-    const finishLoading = () => {
-      if (leagueLoaded && membersLoaded && teamsLoaded) setLeagueLoading(false);
-    };
 
     console.debug("[LeagueContext] Starting league listeners", {
       authUid: user.uid,
@@ -66,13 +66,13 @@ export function LeagueProvider({ children }) {
         setActiveLeague(
           snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null,
         );
-        leagueLoaded = true;
-        finishLoading();
+        setResolvedLeagueId(activeLeagueId);
       },
       (error) => {
         console.error("Could not load active league:", error);
+        setActiveLeague(null);
+        setResolvedLeagueId(activeLeagueId);
         setLeagueError(error);
-        setLeagueLoading(false);
       },
     );
     const unsubscribeMembers = onSnapshot(
@@ -84,13 +84,10 @@ export function LeagueProvider({ children }) {
         setMembers(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
         );
-        membersLoaded = true;
-        finishLoading();
       },
       (error) => {
         console.error("Could not load league members:", error);
         setLeagueError(error);
-        setLeagueLoading(false);
       },
     );
     const unsubscribeTeams = onSnapshot(
@@ -99,13 +96,10 @@ export function LeagueProvider({ children }) {
         setTeams(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
         );
-        teamsLoaded = true;
-        finishLoading();
       },
       (error) => {
         console.error("Could not load league teams:", error);
         setLeagueError(error);
-        setLeagueLoading(false);
       },
     );
     return () => {
@@ -118,7 +112,7 @@ export function LeagueProvider({ children }) {
   const value = useMemo(
     () => ({
       activeLeagueId,
-      activeLeague,
+      activeLeague: resolvedActiveLeague,
       members,
       teams,
       leagueLoading,
@@ -144,7 +138,15 @@ export function LeagueProvider({ children }) {
           userId: user.uid,
         }),
     }),
-    [activeLeagueId, activeLeague, members, teams, leagueLoading, leagueError, user],
+    [
+      activeLeagueId,
+      resolvedActiveLeague,
+      members,
+      teams,
+      leagueLoading,
+      leagueError,
+      user,
+    ],
   );
 
   return (

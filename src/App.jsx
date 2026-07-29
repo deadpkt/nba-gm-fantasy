@@ -12,16 +12,13 @@ import GamesPage from "./pages/GamesPage";
 import HomePage from "./pages/HomePage";
 import LeagueLobbyPage from "./pages/LeagueLobbyPage";
 import LeaguesPage from "./pages/LeaguesPage";
-import LiveMatchPage from "./pages/LiveMatchPage";
 import LoginPage from "./pages/LoginPage";
 import MyTeamPage from "./pages/MyTeamPage";
-import MatchRoomPage from "./pages/MatchRoomPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import NotificationsPage from "./pages/NotificationsPage";
-import OnlineMatchPage from "./pages/OnlineMatchPage";
 import ProfilePage from "./pages/ProfilePage";
 import SignUpPage from "./pages/SignUpPage";
-import SimulationPage from "./pages/SimulationPage";
+import StandingsPage from "./pages/StandingsPage";
 import TradeCenterPage from "./pages/TradeCenterPage";
 import "./App.css";
 
@@ -59,31 +56,11 @@ function App() {
         element={protectedPage(<LeagueLobbyPage />)}
       />
       <Route path="/games" element={leaguePhasePage(<GamesPage />, GAME_PHASES)} />
+      <Route path="/standings" element={leaguePhasePage(<StandingsPage />, [LEAGUE_STATUS.REGULAR_SEASON])} />
       <Route path="/trade-center" element={leaguePhasePage(<TradeCenterPage />, TRADE_PHASES)} />
-      <Route
-        path="/games/exhibition"
-        element={leaguePhasePage(<SimulationPage />, GAME_PHASES)}
-      />
-      <Route
-        path="/games/online"
-        element={leaguePhasePage(<OnlineMatchPage />, GAME_PHASES)}
-      />
       <Route path="/settings" element={protectedPage(<ProfilePage />)} />
       <Route path="/draft" element={<Navigate to="/league/draft" replace />} />
-      <Route
-        path="/simulation"
-        element={<Navigate to="/games/exhibition" replace />}
-      />
-      <Route path="/online" element={<Navigate to="/games/online" replace />} />
       <Route path="/leagues" element={<Navigate to="/league" replace />} />
-      <Route
-        path="/match/:matchId"
-        element={leaguePhasePage(<MatchRoomPage />, GAME_PHASES)}
-      />
-      <Route
-        path="/match/:matchId/live"
-        element={leaguePhasePage(<LiveMatchPage />, GAME_PHASES)}
-      />
       <Route path="/profile" element={<Navigate to="/settings" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

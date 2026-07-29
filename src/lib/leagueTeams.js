@@ -78,7 +78,11 @@ export function isLeagueTeamSeasonReady(teamData = {}) {
 const leagueTeamRef = (leagueId, userId) =>
   doc(db, "leagues", leagueId, "teams", userId);
 
-export async function syncLeagueTeamSeasonReadiness(leagueId, userId) {
+export async function setLeagueTeamSeasonConfirmation(
+  leagueId,
+  userId,
+  confirmed,
+) {
   const teamRef = leagueTeamRef(leagueId, userId);
   const leagueRef = doc(db, "leagues", leagueId);
 
@@ -87,22 +91,26 @@ export async function syncLeagueTeamSeasonReadiness(leagueId, userId) {
       transaction.get(teamRef),
       transaction.get(leagueRef),
     ]);
-    if (!teamSnapshot.exists() || !leagueSnapshot.exists()) return;
+    if (!teamSnapshot.exists() || !leagueSnapshot.exists()) {
+      throw new Error("Your franchise or league is unavailable.");
+    }
 
     const league = leagueSnapshot.data();
-    if (league.status !== LEAGUE_STATUS.SEASON_READY) return;
+    if (league.status !== LEAGUE_STATUS.SEASON_READY) {
+      throw new Error("Lineups can only be confirmed during team setup.");
+    }
+    if (confirmed && !isLeagueTeamSeasonReady(teamSnapshot.data())) {
+      throw new Error("Assign a unique roster player at PG, SG, SF, PF, and C first.");
+    }
 
     const readyIds = Array.isArray(league.seasonReadyMemberIds)
       ? league.seasonReadyMemberIds
       : [];
-    const ready = isLeagueTeamSeasonReady(teamSnapshot.data());
-    const alreadySynchronized = ready
-      ? readyIds.includes(userId)
-      : !readyIds.includes(userId);
-    if (alreadySynchronized) return;
+    const alreadyConfirmed = readyIds.includes(userId);
+    if (alreadyConfirmed === Boolean(confirmed)) return;
 
     transaction.update(leagueRef, {
-      seasonReadyMemberIds: ready
+      seasonReadyMemberIds: confirmed
         ? [...new Set([...readyIds, userId])]
         : readyIds.filter((memberId) => memberId !== userId),
       updatedAt: serverTimestamp(),
@@ -224,16 +232,12 @@ export async function assignLeagueTeamPlayer(
       const readyIds = Array.isArray(league.seasonReadyMemberIds)
         ? league.seasonReadyMemberIds
         : [];
-      const ready = isLeagueTeamSeasonReady({
-        ...current,
-        lineup: normalizedLineup,
-      });
-      transaction.update(leagueRef, {
-        seasonReadyMemberIds: ready
-          ? [...new Set([...readyIds, userId])]
-          : readyIds.filter((memberId) => memberId !== userId),
-        updatedAt: serverTimestamp(),
-      });
+      if (readyIds.includes(userId)) {
+        transaction.update(leagueRef, {
+          seasonReadyMemberIds: readyIds.filter((memberId) => memberId !== userId),
+          updatedAt: serverTimestamp(),
+        });
+      }
     }
   });
 }

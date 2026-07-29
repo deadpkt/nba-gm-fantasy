@@ -6,7 +6,7 @@ export function getLineupPlayers(team, lineup = {}) {
   ).filter(Boolean);
 }
 
-// Shared by exhibition, online, and future league match flows.
+// Shared by league roster, lineup, and official-game flows.
 export function getMissingLineupPositions(team, lineup = {}) {
   return LINEUP_POSITIONS.filter(
     (position) => !team.some((player) => player.id === lineup[position]),

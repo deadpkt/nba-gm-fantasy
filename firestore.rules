@@ -29,16 +29,50 @@ service cloud.firestore {
         ]);
     }
 
-    function isSingleLeagueResultIncrement() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['record', 'updatedAt'])
-        && request.resource.data.record.wins >= resource.data.record.wins
-        && request.resource.data.record.losses >= resource.data.record.losses
-        && request.resource.data.record.wins - resource.data.record.wins
-          + request.resource.data.record.losses - resource.data.record.losses == 1;
-    }
-
     function readyMemberIds(leagueData) {
       return leagueData.get('readyMemberIds', []);
+    }
+
+    function hasValidSeasonConfig(leagueData) {
+      let config = leagueData.seasonConfig;
+      return leagueData.maxMembers in [2, 4, 6, 8]
+        && config.keys().hasOnly([
+          'preset', 'gamesPerTeam', 'scheduleVersion'
+        ])
+        && config.scheduleVersion == 1
+        && ((config.preset == 'SHORT'
+            && config.gamesPerTeam == (leagueData.maxMembers - 1) * 2)
+          || (config.preset == 'STANDARD'
+            && config.gamesPerTeam == (leagueData.maxMembers - 1) * 4)
+          || (config.preset == 'FULL'
+            && config.gamesPerTeam == (leagueData.maxMembers - 1) * 8));
+    }
+
+    function hasValidScheduleMetadata(leagueData) {
+      let schedule = leagueData.schedule;
+      return hasValidSeasonConfig(leagueData)
+        && schedule.keys().hasOnly([
+          'version', 'generatedForSeason', 'totalGames', 'totalRounds',
+          'generatedAt'
+        ])
+        && schedule.version == leagueData.seasonConfig.scheduleVersion
+        && schedule.generatedForSeason == leagueData.season
+        && schedule.totalGames
+          == leagueData.memberIds.size() * leagueData.seasonConfig.gamesPerTeam / 2
+        && schedule.totalRounds == leagueData.seasonConfig.gamesPerTeam
+        && schedule.generatedAt == request.time;
+    }
+
+    function hasInitialSeasonProgress(leagueData) {
+      let progress = leagueData.seasonProgress;
+      return progress.keys().hasOnly([
+          'currentRound', 'roundStatus', 'totalRounds',
+          'regularSeasonComplete'
+        ])
+        && progress.currentRound == 1
+        && progress.roundStatus == 'pending'
+        && progress.totalRounds == leagueData.schedule.totalRounds
+        && progress.regularSeasonComplete == false;
     }
 
     function seasonReadyMemberIds(leagueData) {
@@ -90,8 +124,7 @@ service cloud.firestore {
             && request.auth.uid in after
             && after.hasAll(before)
             && after.size() == before.size() + (request.auth.uid in before ? 0 : 1))
-          || (!hasValidFivePlayerLineup(teamAfter)
-            && !(request.auth.uid in after)
+          || (!(request.auth.uid in after)
             && before.hasAll(after)
             && after.size() == before.size() - (request.auth.uid in before ? 1 : 0)));
     }
@@ -105,10 +138,7 @@ service cloud.firestore {
         ])
         && request.resource.data.roster == resource.data.roster
         && request.resource.data.updatedAt == request.time
-        && ((hasValidFivePlayerLineup(request.resource.data)
-            && userId in seasonReadyMemberIds(leagueAfter))
-          || (!hasValidFivePlayerLineup(request.resource.data)
-            && !(userId in seasonReadyMemberIds(leagueAfter))));
+        && !(userId in seasonReadyMemberIds(leagueAfter));
     }
 
     function isInSeasonTeamConfigurationUpdate(leagueId) {
@@ -184,11 +214,6 @@ service cloud.firestore {
         && onlyProfileFieldsChanged()
         || isCancelledLeagueReferenceCleanup();
 
-      match /matchHistory/{matchId} {
-        allow read: if signedIn() && request.auth.uid == userId;
-        allow create: if signedIn() && request.auth.uid == userId
-          && request.resource.data.matchId == matchId;
-      }
     }
 
     match /leagues/{leagueId} {
@@ -197,6 +222,7 @@ service cloud.firestore {
       allow get: if signedIn();
       allow create: if signedIn()
         && request.resource.data.commissionerUid == request.auth.uid
+        && hasValidSeasonConfig(request.resource.data)
         && request.resource.data.memberIds.size() == 1
         && request.resource.data.memberIds[0] == request.auth.uid
         && request.resource.data.readyMemberIds.size() == 0
@@ -229,8 +255,11 @@ service cloud.firestore {
           && resource.data.status == 'season_ready'
           && request.resource.data.status == 'regular_season'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'seasonStartedAt', 'updatedAt'
+            'status', 'seasonConfig', 'schedule', 'seasonProgress',
+            'seasonStartedAt', 'updatedAt'
           ])
+          && hasValidScheduleMetadata(request.resource.data)
+          && hasInitialSeasonProgress(request.resource.data)
           && seasonReadyMemberIds(resource.data).size() == resource.data.memberIds.size()
           && seasonReadyMemberIds(resource.data).hasAll(resource.data.memberIds)
           && request.resource.data.seasonStartedAt == request.time
@@ -311,7 +340,6 @@ service cloud.firestore {
         allow update: if isLeagueMember(leagueId) && request.auth.uid == userId
           && (isSeasonReadyLineupUpdate(leagueId, userId)
             || isInSeasonTeamConfigurationUpdate(leagueId)
-            || isSingleLeagueResultIncrement()
             || isDraftRosterAppend(leagueId, userId));
         allow delete: if signedIn()
           && request.auth.uid == userId
@@ -319,6 +347,47 @@ service cloud.firestore {
           && resource.data.roster.size() == 0
           && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
           && !(request.auth.uid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds);
+      }
+
+      match /games/{gameId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create: if isCommissioner(leagueId)
+          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status
+            == 'season_ready'
+          && getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.status
+            == 'regular_season'
+          && hasValidScheduleMetadata(
+            getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data
+          )
+          && request.resource.data.keys().hasOnly([
+            'leagueId', 'season', 'scheduleVersion', 'round', 'gameNumber',
+            'homeUid', 'awayUid', 'homeTeamName', 'awayTeamName', 'status',
+            'scheduledOrder', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.leagueId == leagueId
+          && request.resource.data.season
+            == getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.season
+          && request.resource.data.scheduleVersion
+            == getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.schedule.version
+          && request.resource.data.round is int
+          && request.resource.data.round >= 1
+          && request.resource.data.round
+            <= getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.schedule.totalRounds
+          && request.resource.data.gameNumber is int
+          && request.resource.data.gameNumber >= 1
+          && request.resource.data.gameNumber
+            <= getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.schedule.totalGames
+          && request.resource.data.scheduledOrder == request.resource.data.gameNumber
+          && request.resource.data.homeUid != request.resource.data.awayUid
+          && request.resource.data.homeUid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds
+          && request.resource.data.awayUid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds
+          && request.resource.data.homeTeamName is string
+          && request.resource.data.awayTeamName is string
+          && request.resource.data.status == 'scheduled'
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if false;
+        allow delete: if false;
       }
 
       match /playerOwnership/{playerId} {
@@ -451,72 +520,5 @@ service cloud.firestore {
       }
     }
 
-    match /matches/{matchId} {
-      function isHost() {
-        return signedIn() && resource.data.hostUid == request.auth.uid;
-      }
-
-      function isGuest() {
-        return signedIn() && resource.data.guestUid == request.auth.uid;
-      }
-
-      function isParticipant() {
-        return isHost() || isGuest();
-      }
-
-      function isGuestJoining() {
-        return signedIn()
-          && isLeagueMember(resource.data.leagueId)
-          && resource.data.status == 'waiting'
-          && resource.data.guestUid == null
-          && request.resource.data.guestUid == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'guestUid', 'guest', 'ready', 'updatedAt'
-          ])
-          && request.resource.data.ready.host == false
-          && request.resource.data.ready.guest == false;
-      }
-
-      function isReadyUpdate() {
-        return isParticipant()
-          && resource.data.status == 'waiting'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ready', 'updatedAt'])
-          && (isHost() && request.resource.data.ready.guest == resource.data.ready.guest
-            || isGuest() && request.resource.data.ready.host == resource.data.ready.host);
-      }
-
-      function isHostStart() {
-        return isHost()
-          && resource.data.status == 'waiting'
-          && resource.data.ready.host == true
-          && resource.data.ready.guest == true
-          && request.resource.data.status == 'in_progress'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'simulation', 'startedAt', 'updatedAt'
-          ]);
-      }
-
-      function isHostSimulationUpdate() {
-        return isHost()
-          && resource.data.status == 'in_progress'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'simulation', 'status', 'result', 'completedAt', 'updatedAt'
-          ])
-          && (request.resource.data.status == 'in_progress'
-            || request.resource.data.status == 'completed');
-      }
-
-      allow get: if signedIn()
-        && (isParticipant() || (resource.data.status == 'waiting' && resource.data.guestUid == null));
-      allow list: if isParticipant();
-      allow create: if signedIn()
-        && request.resource.data.hostUid == request.auth.uid
-        && isLeagueMember(request.resource.data.leagueId)
-        && request.resource.data.guestUid == null
-        && request.resource.data.status == 'waiting'
-        && request.resource.data.ready.host == false
-        && request.resource.data.ready.guest == false;
-      allow update: if isGuestJoining() || isReadyUpdate() || isHostStart() || isHostSimulationUpdate();
-    }
   }
 }

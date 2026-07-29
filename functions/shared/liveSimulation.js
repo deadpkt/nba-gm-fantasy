@@ -1,7 +1,12 @@
-import { getTeamOverall } from "./team";
+function getTeamOverall(players) {
+  if (!players.length) return 0;
+  return Math.round(
+    players.reduce((total, player) => total + player.overall, 0) / players.length,
+  );
+}
 
-const randomInt = (max) => Math.floor(Math.random() * max);
-const choose = (players) => players[randomInt(players.length)];
+const randomInt = (max, random) => Math.floor(random() * max);
+const choose = (players, random) => players[randomInt(players.length, random)];
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function getPlayerRatings(player) {
@@ -87,7 +92,7 @@ export function formatClock(seconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export function simulatePossession(game, home, away) {
+export function simulatePossession(game, home, away, random = Math.random) {
   const next = JSON.parse(JSON.stringify(game));
   if (next.completed) return next;
   const isHome = next.possession % 2 === 0;
@@ -98,8 +103,8 @@ export function simulatePossession(game, home, away) {
   const opponentStats = isHome ? next.awayStats : next.homeStats;
   const teamStats = isHome ? next.homeTeamStats : next.awayTeamStats;
   const opponentTeamStats = isHome ? next.awayTeamStats : next.homeTeamStats;
-  const shooter = choose(offense);
-  const defender = choose(defense);
+  const shooter = choose(offense, random);
+  const defender = choose(defense, random);
   const shooterRatings = getPlayerRatings(shooter);
   const defenderRatings = getPlayerRatings(defender);
   const clutchFactor =
@@ -112,27 +117,35 @@ export function simulatePossession(game, home, away) {
   const phase = next.clock > 120 ? "early" : next.clock > 45 ? "mid" : "clutch";
   let type = "miss";
   let text = "";
+  let eventType = "missed_shot";
+  let pointsScored = 0;
+  let assistPlayerId = null;
+  let reboundPlayerId = null;
+  let defensivePlayerId = null;
 
   const turnoverChance = clamp(
     0.085 + (defenderRatings.defense - shooterRatings.overall) / 500,
     0.05,
     0.16,
   );
-  if (Math.random() < turnoverChance) {
-    const steal = Math.random() < 0.63;
+  if (random() < turnoverChance) {
+    const steal = random() < 0.63;
     playerStats[shooter.id].turnovers += 1;
     teamStats.turnovers += 1;
     if (steal) {
       opponentStats[defender.id].steals += 1;
       opponentTeamStats.steals += 1;
       type = "steal";
+      eventType = "steal";
+      defensivePlayerId = defender.id;
       text = `${defender.name} strips ${shooter.name} for the steal.`;
     } else {
       type = "turnover";
+      eventType = "turnover";
       text = `${shooter.name} loses the handle. Turnover.`;
     }
   } else {
-    const isThree = Math.random() < 0.34;
+    const isThree = random() < 0.34;
     const shotLabel = isThree ? "three-pointer" : "jumper";
     const makeChance = clamp(
       0.39 +
@@ -154,8 +167,9 @@ export function simulatePossession(game, home, away) {
       playerStats[shooter.id].threesAttempted += 1;
       teamStats.threesAttempted += 1;
     }
-    if (Math.random() < makeChance) {
+    if (random() < makeChance) {
       const points = isThree ? 3 : 2;
+      pointsScored = points;
       next[scoreKey] += points;
       playerStats[shooter.id].points += points;
       playerStats[shooter.id].fieldGoalsMade += 1;
@@ -166,23 +180,27 @@ export function simulatePossession(game, home, away) {
       }
       const assister =
         offense.find((player) => player.id !== shooter.id) &&
-        Math.random() < 0.62
-          ? choose(offense.filter((player) => player.id !== shooter.id))
+        random() < 0.62
+          ? choose(offense.filter((player) => player.id !== shooter.id), random)
           : null;
       if (assister) {
+        assistPlayerId = assister.id;
         playerStats[assister.id].assists += 1;
         teamStats.assists += 1;
         text = `${shooter.name} drills a ${shotLabel} off a dime from ${assister.name}.`;
       } else text = `${shooter.name} knocks down the ${shotLabel}.`;
       type = isThree ? "three" : "made";
-    } else if (Math.random() < blockChance) {
+      eventType = isThree ? "made_3pt" : "made_2pt";
+    } else if (random() < blockChance) {
       opponentStats[defender.id].blocks += 1;
       opponentTeamStats.blocks += 1;
       type = "block";
+      eventType = "block";
+      defensivePlayerId = defender.id;
       text = `${defender.name} swats ${shooter.name}'s ${shotLabel}.`;
     } else {
       const rebounder =
-        Math.random() < 0.72 ? choose(defense) : choose(offense);
+        random() < 0.72 ? choose(defense, random) : choose(offense, random);
       const reboundStats = defense.some((player) => player.id === rebounder.id)
         ? opponentStats
         : playerStats;
@@ -192,8 +210,10 @@ export function simulatePossession(game, home, away) {
         ? opponentTeamStats
         : teamStats;
       reboundStats[rebounder.id].rebounds += 1;
+      reboundPlayerId = rebounder.id;
       reboundTeamStats.rebounds += 1;
       type = "miss";
+      eventType = "missed_shot";
       text = `${shooter.name} misses the ${shotLabel}; ${rebounder.name} secures the rebound.`;
     }
   }
@@ -206,8 +226,15 @@ export function simulatePossession(game, home, away) {
       id: next.possession,
       clock: formatClock(next.clock),
       type,
+      eventType,
       phase,
       text,
+      offensePlayerId: shooter.id,
+      defensePlayerId: defender.id,
+      pointsScored,
+      assistPlayerId,
+      reboundPlayerId,
+      defensivePlayerId,
       homeScore: next.homeScore,
       awayScore: next.awayScore,
     },
@@ -261,3 +288,4 @@ function finishGame(game, home, away) {
     awayScore: game.awayScore,
   });
 }
+

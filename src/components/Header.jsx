@@ -53,7 +53,12 @@ function getNavigationGroups(activeLeagueId, status) {
     {
       label: "League",
       icon: "◇",
-      items: [leagueItem],
+      items: [
+        leagueItem,
+        ...(status === LEAGUE_STATUS.REGULAR_SEASON
+          ? [{ to: "/standings", label: "Standings", icon: "#" }]
+          : []),
+      ],
     },
   ];
 }

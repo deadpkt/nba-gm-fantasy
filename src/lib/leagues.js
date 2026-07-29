@@ -9,6 +9,13 @@ import { db } from "./firebase";
 import { buildInitialDraftState, draftStateRef } from "./draft";
 import { createInitialLeagueTeam, isLeagueTeamSeasonReady } from "./leagueTeams";
 import { LEAGUE_STATUS } from "./leagueStatuses";
+import { createSeasonConfig } from "./seasonConfig";
+import { normalizeSeasonConfig } from "./seasonConfig";
+import { createSeasonProgress } from "./seasonProgress";
+import {
+  generateRegularSeasonSchedule,
+  isCurrentScheduleMetadata,
+} from "./schedule";
 
 const createLeagueCode = () =>
   crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
@@ -16,7 +23,8 @@ const createLeagueCode = () =>
 const displayName = (user) =>
   user.displayName || user.email?.split("@")[0] || "Full Court Player";
 
-export async function createLeague({ user, name, maxMembers }) {
+export async function createLeague({ user, name, maxMembers, seasonPreset }) {
+  const seasonConfig = createSeasonConfig(maxMembers, seasonPreset);
   const leagueId = createLeagueCode();
   const leagueRef = doc(db, "leagues", leagueId);
   const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
@@ -32,6 +40,7 @@ export async function createLeague({ user, name, maxMembers }) {
     maxMembers,
     status: LEAGUE_STATUS.LOBBY,
     season: 1,
+    seasonConfig,
     inviteCode: leagueId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -235,6 +244,14 @@ export async function startLeagueSeason({ leagueId, userId }) {
     if (league.commissionerUid !== userId) {
       throw new Error("Only the commissioner can start the season.");
     }
+    const seasonConfig = normalizeSeasonConfig(
+      league.maxMembers,
+      league.seasonConfig,
+    );
+    if (league.status === LEAGUE_STATUS.REGULAR_SEASON) {
+      if (isCurrentScheduleMetadata(league, seasonConfig)) return;
+      throw new Error("This season is active but its schedule metadata is invalid.");
+    }
     if (league.status !== LEAGUE_STATUS.SEASON_READY) {
       throw new Error("The season can only start after the draft is complete.");
     }
@@ -265,8 +282,45 @@ export async function startLeagueSeason({ leagueId, userId }) {
       throw new Error("Every franchise must be ready before the season can start.");
     }
 
+    const teamNames = Object.fromEntries(
+      teamSnapshots.map((snapshot) => [
+        snapshot.id,
+        snapshot.data().name || snapshot.id,
+      ]),
+    );
+    const generatedSchedule = generateRegularSeasonSchedule({
+      leagueId,
+      season: league.season,
+      memberIds: [...league.memberIds],
+      seasonConfig,
+      teamNames,
+    });
+    const gameRefs = generatedSchedule.games.map((game) =>
+      doc(db, "leagues", leagueId, "games", game.id),
+    );
+    const gameSnapshots = await Promise.all(
+      gameRefs.map((gameRef) => transaction.get(gameRef)),
+    );
+    if (gameSnapshots.some((snapshot) => snapshot.exists())) {
+      throw new Error("Official schedule documents already exist for this season.");
+    }
+
+    generatedSchedule.games.forEach(({ id: _id, ...game }, index) => {
+      transaction.set(gameRefs[index], {
+        ...game,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+
     transaction.update(leagueRef, {
       status: LEAGUE_STATUS.REGULAR_SEASON,
+      seasonConfig,
+      schedule: {
+        ...generatedSchedule.metadata,
+        generatedAt: serverTimestamp(),
+      },
+      seasonProgress: createSeasonProgress(generatedSchedule.metadata.totalRounds),
       seasonStartedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

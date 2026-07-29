@@ -43,7 +43,6 @@ Create your dream team, manage your lineup, compete against friends, and experie
 
 ### 🌐 Online Multiplayer
 
-- Create private matches
 - Invite friends with a match link
 - Play against other fantasy teams
 - Real-time updates with Firebase

@@ -3,6 +3,11 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import useLeague from "../hooks/useLeague";
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
+import {
+  DEFAULT_SEASON_PRESET,
+  getSeasonPresetOptions,
+  SUPPORTED_LEAGUE_SIZES,
+} from "../lib/seasonConfig";
 
 function LeaguesPage() {
   const { activeLeague, activeLeagueId, members, createLeague, joinLeague } =
@@ -11,6 +16,7 @@ function LeaguesPage() {
   const location = useLocation();
   const [leagueName, setLeagueName] = useState("");
   const [maxMembers, setMaxMembers] = useState(4);
+  const [seasonPreset, setSeasonPreset] = useState(DEFAULT_SEASON_PRESET);
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,6 +30,7 @@ function LeaguesPage() {
       const id = await createLeague({
         name: leagueName,
         maxMembers: Number(maxMembers),
+        seasonPreset,
       });
       navigate(`/league/${id}`);
     } catch (nextError) {
@@ -82,7 +89,8 @@ function LeaguesPage() {
           <p className="section-label">COMMISSIONER MODE</p>
           <h2>Create a private league</h2>
           <label>League name<input value={leagueName} onChange={(event) => setLeagueName(event.target.value)} minLength="3" maxLength="40" required placeholder="Friends NBA League" /></label>
-          <label>League size<select value={maxMembers} onChange={(event) => setMaxMembers(event.target.value)}>{[2, 4, 6, 8].map((count) => <option value={count} key={count}>{count} teams</option>)}</select></label>
+          <label>League size<select value={maxMembers} onChange={(event) => setMaxMembers(Number(event.target.value))}>{SUPPORTED_LEAGUE_SIZES.map((count) => <option value={count} key={count}>{count} teams</option>)}</select></label>
+          <label>Season length<select value={seasonPreset} onChange={(event) => setSeasonPreset(event.target.value)}>{getSeasonPresetOptions(maxMembers).map((option) => <option value={option.preset} key={option.preset}>{option.label} — {option.gamesPerTeam} games/team</option>)}</select></label>
           <button disabled={busy}>{busy ? "Creating..." : "Create league"}</button>
         </form>
         <form onSubmit={join}>

@@ -1,5 +1,5 @@
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import useAuth from "../hooks/useAuth";
@@ -7,6 +7,10 @@ import useLeague from "../hooks/useLeague";
 import { db } from "../lib/firebase";
 import { isLeagueTeamSeasonReady } from "../lib/leagueTeams";
 import { getLeagueStatusLabel, LEAGUE_STATUS } from "../lib/leagueStatuses";
+import {
+  getSeasonPresetLabel,
+  normalizeSeasonConfig,
+} from "../lib/seasonConfig";
 
 function getLeaguePhaseMessage(status) {
   switch (status) {
@@ -33,6 +37,7 @@ function LeagueLobbyPage() {
     teams,
     leagueLoading,
     joinLeague,
+    selectLeague,
     setReady,
     startDraft,
     startSeason,
@@ -42,25 +47,40 @@ function LeagueLobbyPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [inviteLeague, setInviteLeague] = useState(null);
+  const [resolvedRouteLeagueId, setResolvedRouteLeagueId] = useState(null);
   const [inviteMembers, setInviteMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const observedPhase = useRef({ leagueId: null, status: null });
   const isActiveLeague = activeLeagueId === leagueId;
-  const league = isActiveLeague ? activeLeague : inviteLeague;
+  const league = isActiveLeague ? activeLeague || inviteLeague : inviteLeague;
   const members = isActiveLeague ? activeMembers : inviteMembers;
   const isMember = Boolean(league?.memberIds?.includes(user.uid));
 
   useEffect(() => {
-    if (isActiveLeague) {
-      setLoading(false);
-      return undefined;
+    if (!league) return;
+
+    const previous = observedPhase.current;
+    const isFirstObservation = previous.leagueId !== league.id;
+    observedPhase.current = { leagueId: league.id, status: league.status };
+
+    if (
+      !isFirstObservation &&
+      previous.status !== LEAGUE_STATUS.DRAFTING &&
+      league.status === LEAGUE_STATUS.DRAFTING &&
+      isActiveLeague &&
+      isMember
+    ) {
+      navigate("/league/draft", { replace: true });
     }
+  }, [isActiveLeague, isMember, league, navigate]);
+
+  useEffect(() => {
     setInviteLeague(null);
+    setResolvedRouteLeagueId(null);
     setInviteMembers([]);
     setError("");
-    setLoading(true);
     return onSnapshot(
       doc(db, "leagues", leagueId),
       (snapshot) => {
@@ -69,14 +89,14 @@ function LeagueLobbyPage() {
         );
         if (!snapshot.exists())
           setError("No league was found with this invite link.");
-        setLoading(false);
+        setResolvedRouteLeagueId(leagueId);
       },
       () => {
         setError("This league invite is unavailable.");
-        setLoading(false);
+        setResolvedRouteLeagueId(leagueId);
       },
     );
-  }, [isActiveLeague, leagueId]);
+  }, [leagueId]);
 
   useEffect(() => {
     if (isActiveLeague || !isMember) {
@@ -112,18 +132,48 @@ function LeagueLobbyPage() {
     );
   }
 
+  const routeLeagueLoading = resolvedRouteLeagueId !== leagueId;
+  if (
+    (routeLeagueLoading && !(isActiveLeague && activeLeague)) ||
+    (isActiveLeague && leagueLoading && !inviteLeague)
+  )
+    return (
+      <PageLayout>
+        <div className="route-loader">Loading league headquarters...</div>
+      </PageLayout>
+    );
+  if (!league)
+    return (
+      <PageLayout>
+        <section className="empty-state">
+          <h2>League unavailable.</h2>
+          <p>{error}</p>
+          <Link to="/league">League HQ</Link>
+        </section>
+      </PageLayout>
+    );
+
   const inviteLink = `${window.location.origin}/league/${leagueId}`;
-  const memberCount = isMember ? members.length : league?.memberIds?.length || 0;
+  const seasonConfig = normalizeSeasonConfig(
+    league.maxMembers,
+    league.seasonConfig,
+  );
+  const memberCount = isMember ? members.length : league.memberIds?.length || 0;
   const readyCount = members.filter((member) => member.ready === true).length;
   const currentMember = members.find((member) => member.uid === user.uid);
   const commissioner = members.find(
-    (member) => member.uid === league?.commissionerUid,
+    (member) => member.uid === league.commissionerUid,
   );
-  const isCommissioner = league?.commissionerUid === user.uid;
-  const lobbyOpen = league?.status === LEAGUE_STATUS.LOBBY;
-  const memberConditionMet = memberCount === league?.maxMembers;
+  const isCommissioner = league.commissionerUid === user.uid;
+  const lobbyOpen = league.status === LEAGUE_STATUS.LOBBY;
+  const memberConditionMet = memberCount === league.maxMembers;
   const readinessConditionMet = memberCount > 0 && readyCount === memberCount;
-  const seasonReadyTeams = teams.filter(isLeagueTeamSeasonReady);
+  const seasonConfirmedIds = league.seasonReadyMemberIds || [];
+  const seasonReadyTeams = teams.filter(
+    (team) =>
+      seasonConfirmedIds.includes(team.ownerUid) &&
+      isLeagueTeamSeasonReady(team),
+  );
   const seasonReadyCount = seasonReadyTeams.length;
   const allTeamsSeasonReady =
     memberCount > 0 &&
@@ -133,12 +183,12 @@ function LeagueLobbyPage() {
     );
   const canStartSeason =
     isCommissioner &&
-    league?.status === LEAGUE_STATUS.SEASON_READY &&
+    league.status === LEAGUE_STATUS.SEASON_READY &&
     allTeamsSeasonReady;
   const canStartDraft =
     isCommissioner && lobbyOpen && memberConditionMet && readinessConditionMet;
   const phaseSummary = (() => {
-    switch (league?.status) {
+    switch (league.status) {
       case LEAGUE_STATUS.DRAFTING:
         return {
           label: "DRAFT PROGRESS",
@@ -166,26 +216,9 @@ function LeagueLobbyPage() {
     }
   })();
   const accessMessage =
-    league?.status === LEAGUE_STATUS.SEASON_READY
+    league.status === LEAGUE_STATUS.SEASON_READY
       ? null
       : location.state?.leagueAccessMessage;
-
-  if (loading || (isActiveLeague && leagueLoading))
-    return (
-      <PageLayout>
-        <div className="route-loader">Loading league headquarters...</div>
-      </PageLayout>
-    );
-  if (!league)
-    return (
-      <PageLayout>
-        <section className="empty-state">
-          <h2>League unavailable.</h2>
-          <p>{error}</p>
-          <Link to="/league">League HQ</Link>
-        </section>
-      </PageLayout>
-    );
 
   return (
     <PageLayout>
@@ -197,13 +230,14 @@ function LeagueLobbyPage() {
 
       {accessMessage && <p className="league-access-message" role="status">{accessMessage}</p>}
 
-      <section className="league-lobby">
+      <section className="league-lobby league-dashboard-summary">
         <div className="league-code">
           <span>INVITE CODE</span><b>{league.inviteCode}</b><small>{inviteLink}</small>
         </div>
         <div className="league-status">
-          <span>LEAGUE STATUS</span><b>{getLeagueStatusLabel(league.status)}</b>
+          <span>LEAGUE STATUS</span><b className={`league-status-chip league-status-chip--${league.status}`}>{getLeagueStatusLabel(league.status)}</b>
           <small>Season {league.season} / Commissioner: {commissioner?.displayName || "Loading"}</small>
+          <small>{getSeasonPresetLabel(seasonConfig.preset)} / {seasonConfig.gamesPerTeam} games per team</small>
         </div>
         <div className="league-next">
           <span>{phaseSummary.label}</span><b>{phaseSummary.value}</b>
@@ -350,6 +384,18 @@ function LeagueLobbyPage() {
         <section className="league-join">
           <p>Use this invite to reserve your franchise.</p>
           <button onClick={join} disabled={Boolean(busyAction)}>{busyAction === "join" ? "Joining..." : "Join this league"}</button>
+        </section>
+      )}
+      {!isActiveLeague && isMember && (
+        <section className="league-join">
+          <p>You are already a member of this league. Open it as your active league to use its member controls.</p>
+          <button
+            type="button"
+            disabled={Boolean(busyAction)}
+            onClick={() => run("select", () => selectLeague(leagueId))}
+          >
+            {busyAction === "select" ? "Opening..." : "Open this league"}
+          </button>
         </section>
       )}
       {error && <p className="league-error" role="alert">{error}</p>}

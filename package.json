@@ -7,6 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
+    "test:schedule": "node --test src/lib/schedule.test.mjs",
+    "test:official-games": "node --test src/lib/officialGames.test.mjs",
+    "test:official-completion": "npm --prefix functions test",
+    "test:round-progression": "node --test src/lib/seasonProgress.test.mjs",
+    "test:standings": "node --test src/lib/standings.test.mjs",
+    "test:phase9": "node --test functions/test/postseason.test.js",
     "preview": "vite preview",
     "seed:player-catalog": "node scripts/seedPlayerCatalog.mjs",
     "migrate:player-catalog-metadata": "node scripts/migratePlayerCatalogMetadata.mjs"
