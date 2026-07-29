@@ -14,7 +14,25 @@ function MatchCard({ title, match }) {
   return (
     <article className="season-match-card">
       <span>{title}</span>
-      {match ? <><b>{opponent}</b><small>{formatMatchDate(match.matchDate)}</small><strong className={match.won ? "is-win" : "is-loss"}>{match.won ? "WIN" : "LOSS"}</strong></> : <><b>{isUpcoming ? "Schedule unavailable" : "No completed matches"}</b><small>{isUpcoming ? "Match schedule data has not been published." : "Your completed matches will appear here."}</small><strong>—</strong></>}
+      {match ? (
+        <>
+          <b>{opponent}</b>
+          <small>{formatMatchDate(match.matchDate)}</small>
+          <strong className={match.won ? "is-win" : "is-loss"}>
+            {match.won ? "WIN" : "LOSS"}
+          </strong>
+        </>
+      ) : (
+        <>
+          <b>{isUpcoming ? "Schedule unavailable" : "No completed matches"}</b>
+          <small>
+            {isUpcoming
+              ? "Match schedule data has not been published."
+              : "Your completed matches will appear here."}
+          </small>
+          <strong>—</strong>
+        </>
+      )}
     </article>
   );
 }

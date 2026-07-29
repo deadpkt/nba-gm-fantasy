@@ -7,7 +7,16 @@ function PlayerCard({
   const { name, position, team, overall, stats, image, color } = player;
 
   return (
-    <article className="player-card" style={{ "--accent-color": color }} onClick={() => openPlayerDetails(player)} onKeyDown={(event) => { if (event.key === "Enter") openPlayerDetails(player); }} role="button" tabIndex="0">
+    <article
+      className="player-card"
+      style={{ "--accent-color": color }}
+      onClick={() => openPlayerDetails(player)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") openPlayerDetails(player);
+      }}
+      role="button"
+      tabIndex="0"
+    >
       <div className="card-glow" />
       <div className="card-grain" />
       <span className="card-number" aria-hidden="true">

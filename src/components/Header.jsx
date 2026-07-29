@@ -73,35 +73,219 @@ function Header() {
       <div className="site-header__shell">
         <NavLink className="logo" to="/" onClick={closeNavigation}>
           <span className="logo__mark">FC</span>
-          <strong><span>FULL COURT</span><small>NBA FANTASY GM</small><em>{teamName}</em></strong>
+          <strong>
+            <span>FULL COURT</span>
+            <small>NBA FANTASY GM</small>
+            <em>{teamName}</em>
+          </strong>
         </NavLink>
-        <button className="header-menu-button" type="button" aria-label="Toggle navigation menu" aria-expanded={mobileMenuOpen} onClick={() => { setMobileMenuOpen((open) => !open); setOpenGroup(null); setNotificationsOpen(false); setProfileMenuOpen(false); }}><i /><i /><i /></button>
-        <nav className={`dashboard-nav ${mobileMenuOpen ? "is-open" : ""}`} aria-label="Main navigation">
-          <NavLink end to="/" className={({ isActive }) => `dashboard-nav__link ${isActive ? "active" : ""}`} onClick={closeNavigation}><span className="dashboard-nav__icon" aria-hidden="true">⌂</span><span>Dashboard</span></NavLink>
+        <button
+          className="header-menu-button"
+          type="button"
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+          onClick={() => {
+            setMobileMenuOpen((open) => !open);
+            setOpenGroup(null);
+            setNotificationsOpen(false);
+            setProfileMenuOpen(false);
+          }}
+        >
+          <i />
+          <i />
+          <i />
+        </button>
+        <nav
+          className={`dashboard-nav ${mobileMenuOpen ? "is-open" : ""}`}
+          aria-label="Main navigation"
+        >
+          <NavLink
+            end
+            to="/"
+            className={({ isActive }) =>
+              `dashboard-nav__link ${isActive ? "active" : ""}`
+            }
+            onClick={closeNavigation}
+          >
+            <span className="dashboard-nav__icon" aria-hidden="true">
+              ⌂
+            </span>
+            <span>Dashboard</span>
+          </NavLink>
           {navigationGroups.map((group) => {
             const groupOpen = openGroup === group.label;
-            const groupActive = group.items.some((item) => item.to === location.pathname);
-            return <div className={`dashboard-nav__group ${groupOpen ? "is-open" : ""} ${groupActive ? "has-active" : ""}`} key={group.label}>
-              <button type="button" className="dashboard-nav__group-button" aria-expanded={groupOpen} aria-controls={`nav-${group.label.toLowerCase()}`} onClick={() => setOpenGroup((current) => current === group.label ? null : group.label)}><span className="dashboard-nav__icon" aria-hidden="true">{group.icon}</span><span>{group.label}</span><i aria-hidden="true">⌄</i></button>
-              <div className="dashboard-nav__flyout" id={`nav-${group.label.toLowerCase()}`}>
-                {group.items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `dashboard-nav__flyout-link ${isActive ? "active" : ""} ${item.team ? "dashboard-nav__flyout-link--team" : ""}`} onClick={closeNavigation}><span className="dashboard-nav__icon" aria-hidden="true">{item.icon}</span>{item.team ? <span className="dashboard-nav__team"><b>{item.label}</b><small>{teamName} · {record.wins}-{record.losses}</small></span> : <span>{item.label}</span>}</NavLink>)}
+            const groupActive = group.items.some(
+              (item) => item.to === location.pathname,
+            );
+            return (
+              <div
+                className={`dashboard-nav__group ${groupOpen ? "is-open" : ""} ${groupActive ? "has-active" : ""}`}
+                key={group.label}
+              >
+                <button
+                  type="button"
+                  className="dashboard-nav__group-button"
+                  aria-expanded={groupOpen}
+                  aria-controls={`nav-${group.label.toLowerCase()}`}
+                  onClick={() =>
+                    setOpenGroup((current) =>
+                      current === group.label ? null : group.label,
+                    )
+                  }
+                >
+                  <span className="dashboard-nav__icon" aria-hidden="true">
+                    {group.icon}
+                  </span>
+                  <span>{group.label}</span>
+                  <i aria-hidden="true">⌄</i>
+                </button>
+                <div
+                  className="dashboard-nav__flyout"
+                  id={`nav-${group.label.toLowerCase()}`}
+                >
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        `dashboard-nav__flyout-link ${isActive ? "active" : ""} ${item.team ? "dashboard-nav__flyout-link--team" : ""}`
+                      }
+                      onClick={closeNavigation}
+                    >
+                      <span className="dashboard-nav__icon" aria-hidden="true">
+                        {item.icon}
+                      </span>
+                      {item.team ? (
+                        <span className="dashboard-nav__team">
+                          <b>{item.label}</b>
+                          <small>
+                            {teamName} · {record.wins}-{record.losses}
+                          </small>
+                        </span>
+                      ) : (
+                        <span>{item.label}</span>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
               </div>
-            </div>;
+            );
           })}
-          <NavLink to="/games" className={({ isActive }) => `dashboard-nav__link ${isActive ? "active" : ""}`} onClick={closeNavigation}><span className="dashboard-nav__icon" aria-hidden="true">▶</span><span>Games</span></NavLink>
+          <NavLink
+            to="/games"
+            className={({ isActive }) =>
+              `dashboard-nav__link ${isActive ? "active" : ""}`
+            }
+            onClick={closeNavigation}
+          >
+            <span className="dashboard-nav__icon" aria-hidden="true">
+              ▶
+            </span>
+            <span>Games</span>
+          </NavLink>
         </nav>
         <div className="user-nav">
           <div className="notification-menu">
-            <button className="notification-button" type="button" aria-label="Open notifications" aria-expanded={notificationsOpen} aria-haspopup="dialog" onClick={() => { setNotificationsOpen((open) => !open); setProfileMenuOpen(false); }}><span aria-hidden="true">🔔</span><i className="notification-button__indicator" aria-label="No unread notifications">0</i></button>
-            {notificationsOpen && <NotificationDropdown notifications={notifications} onNavigate={() => setNotificationsOpen(false)} />}
+            <button
+              className="notification-button"
+              type="button"
+              aria-label="Open notifications"
+              aria-expanded={notificationsOpen}
+              aria-haspopup="dialog"
+              onClick={() => {
+                setNotificationsOpen((open) => !open);
+                setProfileMenuOpen(false);
+              }}
+            >
+              <span aria-hidden="true">🔔</span>
+              <i
+                className="notification-button__indicator"
+                aria-label="No unread notifications"
+              >
+                0
+              </i>
+            </button>
+            {notificationsOpen && (
+              <NotificationDropdown
+                notifications={notifications}
+                onNavigate={() => setNotificationsOpen(false)}
+              />
+            )}
           </div>
           <div className="profile-menu">
-            <button className="header-profile" type="button" aria-label="Open user menu" aria-expanded={profileMenuOpen} aria-haspopup="menu" onClick={() => { setProfileMenuOpen((open) => !open); setNotificationsOpen(false); }}>
-              <span className="profile-link">{user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : initial}</span>
-              <span className="header-profile__copy"><small>GENERAL MANAGER</small><b>{userName}</b></span>
+            <button
+              className="header-profile"
+              type="button"
+              aria-label="Open user menu"
+              aria-expanded={profileMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => {
+                setProfileMenuOpen((open) => !open);
+                setNotificationsOpen(false);
+              }}
+            >
+              <span className="profile-link">
+                {user?.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  initial
+                )}
+              </span>
+              <span className="header-profile__copy">
+                <small>GENERAL MANAGER</small>
+                <b>{userName}</b>
+              </span>
               <i aria-hidden="true">⌄</i>
             </button>
-            {profileMenuOpen && <div className="profile-dropdown" role="menu"><div className="profile-dropdown__identity"><span className="profile-link">{user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : initial}</span><div><b>{userName}</b><small>GENERAL MANAGER</small></div></div><div className="profile-dropdown__links"><NavLink to="/profile" role="menuitem" onClick={() => setProfileMenuOpen(false)}><span aria-hidden="true">◉</span> Profile</NavLink><NavLink to="/settings" role="menuitem" onClick={() => setProfileMenuOpen(false)}><span aria-hidden="true">⚙</span> Settings</NavLink></div><button type="button" className="profile-dropdown__signout" role="menuitem" onClick={handleLogout}><span aria-hidden="true">↗</span> Sign Out</button></div>}
+            {profileMenuOpen && (
+              <div className="profile-dropdown" role="menu">
+                <div className="profile-dropdown__identity">
+                  <span className="profile-link">
+                    {user?.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      initial
+                    )}
+                  </span>
+                  <div>
+                    <b>{userName}</b>
+                    <small>GENERAL MANAGER</small>
+                  </div>
+                </div>
+                <div className="profile-dropdown__links">
+                  <NavLink
+                    to="/profile"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <span aria-hidden="true">◉</span> Profile
+                  </NavLink>
+                  <NavLink
+                    to="/settings"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <span aria-hidden="true">⚙</span> Settings
+                  </NavLink>
+                </div>
+                <button
+                  type="button"
+                  className="profile-dropdown__signout"
+                  role="menuitem"
+                  onClick={handleLogout}
+                >
+                  <span aria-hidden="true">↗</span> Sign Out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

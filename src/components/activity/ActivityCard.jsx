@@ -20,8 +20,18 @@ function ActivityCard({ activity }) {
   const type = activity.type || "team_update";
   return (
     <article className={`activity-card activity-card--${type}`}>
-      <div className="activity-card__marker" aria-hidden="true"><span>{activityIcons[type]}</span></div>
-      <div className="activity-card__content"><header><span>{activityLabels[type]}</span><small>{activity.timestamp}</small></header><h3>{activity.title}</h3><p>{activity.description}</p><b>{activity.subject}</b></div>
+      <div className="activity-card__marker" aria-hidden="true">
+        <span>{activityIcons[type]}</span>
+      </div>
+      <div className="activity-card__content">
+        <header>
+          <span>{activityLabels[type]}</span>
+          <small>{activity.timestamp}</small>
+        </header>
+        <h3>{activity.title}</h3>
+        <p>{activity.description}</p>
+        <b>{activity.subject}</b>
+      </div>
     </article>
   );
 }

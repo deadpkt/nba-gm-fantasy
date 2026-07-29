@@ -1,2 +1,38 @@
-function SeasonOverview({ league, record, overall, teamName }) { const games = record.wins + record.losses; const percentage = games ? Math.round((record.wins / games) * 100) : null; return <section className="season-overview"><div><span>CURRENT SEASON</span><h2>{league?.name || "No active league"}</h2><p>{league?.season ? `Season ${league.season}` : "Join a league to begin your season."}</p></div><div className="season-overview__metrics"><div><span>RECORD</span><b>{record.wins}<i>-{record.losses}</i></b><small>{teamName}</small></div><div><span>WIN RATE</span><b>{percentage === null ? "—" : `${percentage}%`}</b><small>{games ? `${games} games played` : "No games played"}</small></div><div><span>TEAM OVR</span><b>{overall || "—"}</b><small>Starting five</small></div></div></section>; }
+function SeasonOverview({ league, record, overall, teamName }) {
+  const games = record.wins + record.losses;
+  const percentage = games ? Math.round((record.wins / games) * 100) : null;
+  return (
+    <section className="season-overview">
+      <div>
+        <span>CURRENT SEASON</span>
+        <h2>{league?.name || "No active league"}</h2>
+        <p>
+          {league?.season
+            ? `Season ${league.season}`
+            : "Join a league to begin your season."}
+        </p>
+      </div>
+      <div className="season-overview__metrics">
+        <div>
+          <span>RECORD</span>
+          <b>
+            {record.wins}
+            <i>-{record.losses}</i>
+          </b>
+          <small>{teamName}</small>
+        </div>
+        <div>
+          <span>WIN RATE</span>
+          <b>{percentage === null ? "—" : `${percentage}%`}</b>
+          <small>{games ? `${games} games played` : "No games played"}</small>
+        </div>
+        <div>
+          <span>TEAM OVR</span>
+          <b>{overall || "—"}</b>
+          <small>Starting five</small>
+        </div>
+      </div>
+    </section>
+  );
+}
 export default SeasonOverview;
