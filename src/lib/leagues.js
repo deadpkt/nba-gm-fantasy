@@ -11,6 +11,7 @@ import { createInitialLeagueTeam, isLeagueTeamSeasonReady } from "./leagueTeams"
 import { LEAGUE_STATUS } from "./leagueStatuses";
 import { createSeasonConfig } from "./seasonConfig";
 import { normalizeSeasonConfig } from "./seasonConfig";
+import { createRosterConfig, normalizeRosterConfig } from "./rosterConfig";
 import { createSeasonProgress } from "./seasonProgress";
 import {
   generateRegularSeasonSchedule,
@@ -25,6 +26,7 @@ const displayName = (user) =>
 
 export async function createLeague({ user, name, maxMembers, seasonPreset }) {
   const seasonConfig = createSeasonConfig(maxMembers, seasonPreset);
+  const rosterConfig = createRosterConfig();
   const leagueId = createLeagueCode();
   const leagueRef = doc(db, "leagues", leagueId);
   const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
@@ -41,6 +43,7 @@ export async function createLeague({ user, name, maxMembers, seasonPreset }) {
     status: LEAGUE_STATUS.LOBBY,
     season: 1,
     seasonConfig,
+    rosterConfig,
     inviteCode: leagueId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -228,7 +231,7 @@ export async function startLeagueDraft({ leagueId, userId }) {
     });
     transaction.set(
       stateRef,
-      buildInitialDraftState(leagueId, [...league.memberIds]),
+      buildInitialDraftState(leagueId, [...league.memberIds], normalizeRosterConfig(league).rosterSize),
     );
   });
 }
@@ -264,11 +267,11 @@ export async function startLeagueSeason({ leagueId, userId }) {
     if (
       teamSnapshots.some(
         (snapshot) =>
-          !snapshot.exists() || !isLeagueTeamSeasonReady(snapshot.data()),
+          !snapshot.exists() || !isLeagueTeamSeasonReady(snapshot.data(), league),
       )
     ) {
       throw new Error(
-        "Every franchise needs exactly five drafted players and a complete valid lineup.",
+        `Every franchise needs exactly ${normalizeRosterConfig(league).rosterSize} drafted players and a complete valid Starting Five.`,
       );
     }
 

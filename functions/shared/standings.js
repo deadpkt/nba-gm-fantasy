@@ -29,6 +29,7 @@ function compareGameOrder(left, right) {
 export function isValidCompletedSeasonGame(game, season, teamUids) {
   if (
     game?.status !== "completed" || game.season !== season ||
+    (game.stage != null && game.stage !== "regular_season") ||
     !teamUids.has(String(game.homeUid)) || !teamUids.has(String(game.awayUid)) ||
     game.homeUid === game.awayUid
   ) return false;

@@ -6,7 +6,7 @@ function ProtectedRoute({ children }) {
   const location = useLocation();
   if (loading)
     return <div className="route-loader">Loading your franchise...</div>;
-  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (!user) return <Navigate to="/login" replace state={{ from: { pathname: location.pathname, search: location.search, hash: location.hash } }} />;
   return children;
 }
 

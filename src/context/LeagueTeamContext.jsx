@@ -16,6 +16,7 @@ import {
   recordLeagueTeamResult,
   removeLeagueTeamPlayer,
   setLeagueTeamSeasonConfirmation,
+  setLeagueTeamOffseasonConfirmation,
   setLeagueTeamStrategy,
 } from "../lib/leagueTeams";
 
@@ -30,6 +31,7 @@ export function LeagueTeamProvider({ children }) {
   const seasonConfirmed = Boolean(
     user && activeLeague?.seasonReadyMemberIds?.includes(user.uid),
   );
+  const offseasonConfirmed = Boolean(user && activeLeague?.offseason?.nextSeason === activeLeague?.season + 1 && activeLeague?.offseason?.readyMemberIds?.includes(user.uid));
 
   useEffect(() => {
     if (!user || !firebaseEnabled || !activeLeagueId) {
@@ -84,6 +86,7 @@ export function LeagueTeamProvider({ children }) {
       strategy: leagueTeam?.strategy || null,
       record: leagueTeam?.record || { wins: 0, losses: 0 },
       seasonConfirmed,
+      offseasonConfirmed,
       leagueTeamLoading,
       leagueTeamError,
       addPlayer: async (player) => {
@@ -110,6 +113,10 @@ export function LeagueTeamProvider({ children }) {
           confirmed,
         );
       },
+      confirmOffseasonLineup: async (confirmed) => {
+        const { leagueId, userId } = requireActiveTeam();
+        await setLeagueTeamOffseasonConfirmation(leagueId, userId, confirmed);
+      },
       recordResult: async (won) => {
         const { leagueId, userId } = requireActiveTeam();
         await recordLeagueTeamResult(leagueId, userId, won);
@@ -122,6 +129,7 @@ export function LeagueTeamProvider({ children }) {
       leagueTeamLoading,
       requireActiveTeam,
       seasonConfirmed,
+      offseasonConfirmed,
     ],
   );
 

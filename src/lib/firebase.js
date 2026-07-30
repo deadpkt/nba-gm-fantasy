@@ -1,8 +1,6 @@
 import { getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getFunctions } from "firebase/functions";
-import { getStorage } from "firebase/storage";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,11 +12,20 @@ const firebaseConfig = {
 };
 
 export const firebaseEnabled = Object.values(firebaseConfig).every(Boolean);
-const app = firebaseEnabled
+export const app = firebaseEnabled
   ? getApps()[0] || initializeApp(firebaseConfig)
   : null;
 
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
-export const functions = app ? getFunctions(app) : null;
-export const storage = app ? getStorage(app) : null;
+
+if (
+  import.meta.env.DEV &&
+  import.meta.env.VITE_USE_FIREBASE_EMULATORS === "true" &&
+  app &&
+  !globalThis.__NBA_GM_FIREBASE_CORE_EMULATORS_CONNECTED__
+) {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  globalThis.__NBA_GM_FIREBASE_CORE_EMULATORS_CONNECTED__ = true;
+}

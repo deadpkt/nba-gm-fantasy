@@ -2,24 +2,32 @@ import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore"
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
+import LeagueProgress from "../components/LeagueProgress";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
+import useLeagueContracts from "../hooks/useLeagueContracts";
 import { db } from "../lib/firebase";
 import { isLeagueTeamSeasonReady } from "../lib/leagueTeams";
+import { getOffseasonTeamPreparationState, normalizeOffseasonPreparation } from "../lib/offseasonPreparation";
 import { getLeagueStatusLabel, LEAGUE_STATUS } from "../lib/leagueStatuses";
 import {
   getSeasonPresetLabel,
   normalizeSeasonConfig,
 } from "../lib/seasonConfig";
+import { startNextSeason } from "../lib/seasonHistory";
+import { formatMoney } from "../lib/contracts";
+import { normalizeRosterConfig } from "../lib/rosterConfig";
 
 function getLeaguePhaseMessage(status) {
   switch (status) {
     case LEAGUE_STATUS.LOBBY:
       return "The league lobby is open. Fill every franchise slot and ready up before the draft phase.";
     case LEAGUE_STATUS.DRAFTING:
-      return "The shared draft is active. Follow the draft room until every franchise has five players.";
+      return "The shared draft is active. Follow the draft room until every franchise completes its roster.";
     case LEAGUE_STATUS.SEASON_READY:
       return "Draft complete. Set your lineup and prepare for the season.";
+    case LEAGUE_STATUS.OFFSEASON:
+      return "The completed season is preserved. The league is now in offseason preparation.";
     case LEAGUE_STATUS.CANCELLED:
       return "This league has been cancelled.";
     default:
@@ -45,6 +53,7 @@ function LeagueLobbyPage() {
     cancelLeague,
   } = useLeague();
   const navigate = useNavigate();
+  const { contracts, contractsInitialized, payroll, salaryCap, validation: contractValidation } = useLeagueContracts();
   const location = useLocation();
   const [inviteLeague, setInviteLeague] = useState(null);
   const [resolvedRouteLeagueId, setResolvedRouteLeagueId] = useState(null);
@@ -158,6 +167,7 @@ function LeagueLobbyPage() {
     league.maxMembers,
     league.seasonConfig,
   );
+  const rosterConfig = normalizeRosterConfig(league);
   const memberCount = isMember ? members.length : league.memberIds?.length || 0;
   const readyCount = members.filter((member) => member.ready === true).length;
   const currentMember = members.find((member) => member.uid === user.uid);
@@ -172,9 +182,13 @@ function LeagueLobbyPage() {
   const seasonReadyTeams = teams.filter(
     (team) =>
       seasonConfirmedIds.includes(team.ownerUid) &&
-      isLeagueTeamSeasonReady(team),
+      isLeagueTeamSeasonReady(team, league),
   );
   const seasonReadyCount = seasonReadyTeams.length;
+  const offseasonPreparation = normalizeOffseasonPreparation(league);
+  const offseasonReadyTeams = teams.filter((team) => getOffseasonTeamPreparationState({ league, team, userId: team.ownerUid, contracts }).ready);
+  const offseasonReadyCount = offseasonReadyTeams.length;
+  const allOffseasonTeamsReady = memberCount > 0 && offseasonReadyCount === memberCount && offseasonPreparation.readyMemberIds.length === memberCount;
   const allTeamsSeasonReady =
     memberCount > 0 &&
     seasonReadyCount === memberCount &&
@@ -207,6 +221,12 @@ function LeagueLobbyPage() {
           value: "CANCELLED",
           detail: "This league is no longer active",
         };
+      case LEAGUE_STATUS.OFFSEASON:
+        return {
+          label: `OFFSEASON — PREPARING FOR SEASON ${offseasonPreparation.nextSeason}`,
+          value: `${offseasonReadyCount}/${memberCount} READY`,
+          detail: `Season ${league.offseason?.seasonCompleted || league.season} complete`,
+        };
       default:
         return {
           label: "LOBBY READINESS",
@@ -230,6 +250,8 @@ function LeagueLobbyPage() {
 
       {accessMessage && <p className="league-access-message" role="status">{accessMessage}</p>}
 
+      {isActiveLeague && isMember && <LeagueProgress />}
+
       <section className="league-lobby league-dashboard-summary">
         <div className="league-code">
           <span>INVITE CODE</span><b>{league.inviteCode}</b><small>{inviteLink}</small>
@@ -238,6 +260,7 @@ function LeagueLobbyPage() {
           <span>LEAGUE STATUS</span><b className={`league-status-chip league-status-chip--${league.status}`}>{getLeagueStatusLabel(league.status)}</b>
           <small>Season {league.season} / Commissioner: {commissioner?.displayName || "Loading"}</small>
           <small>{getSeasonPresetLabel(seasonConfig.preset)} / {seasonConfig.gamesPerTeam} games per team</small>
+          <small>{rosterConfig.rosterSize} players / {rosterConfig.starterCount} starters / {rosterConfig.benchSize} bench</small>
         </div>
         <div className="league-next">
           <span>{phaseSummary.label}</span><b>{phaseSummary.value}</b>
@@ -258,6 +281,8 @@ function LeagueLobbyPage() {
               <i className={
                 (league.status === LEAGUE_STATUS.SEASON_READY
                   ? seasonReadyTeams.some((team) => team.ownerUid === member.uid)
+                  : league.status === LEAGUE_STATUS.OFFSEASON
+                    ? offseasonReadyTeams.some((team) => team.ownerUid === member.uid)
                   : member.ready)
                   ? "is-ready"
                   : "is-not-ready"
@@ -266,6 +291,10 @@ function LeagueLobbyPage() {
                   ? seasonReadyTeams.some((team) => team.ownerUid === member.uid)
                     ? "READY FOR SEASON"
                     : "NOT READY FOR SEASON"
+                  : league.status === LEAGUE_STATUS.OFFSEASON
+                    ? offseasonReadyTeams.some((team) => team.ownerUid === member.uid)
+                      ? `READY FOR SEASON ${offseasonPreparation.nextSeason}`
+                      : "NOT READY"
                   : member.ready
                     ? "READY"
                     : "NOT READY"}
@@ -281,7 +310,7 @@ function LeagueLobbyPage() {
       )}
 
       {isMember && lobbyOpen && (
-        <section className="league-control-panel">
+        <section className="league-control-panel" id="league-controls">
           <div>
             <p className="section-label">YOUR STATUS</p>
             <h2>{currentMember?.ready ? "Ready for draft" : "Not ready"}</h2>
@@ -352,11 +381,11 @@ function LeagueLobbyPage() {
       )}
 
       {league.status === LEAGUE_STATUS.SEASON_READY && isMember && (
-        <section className="league-control-panel">
+        <section className="league-control-panel" id="league-controls">
           <div>
             <p className="section-label">DRAFT COMPLETE / TEAM PREPARATION</p>
             <h2>{seasonReadyCount}/{memberCount} franchises ready</h2>
-            <p>Each franchise needs exactly five drafted players and one roster player assigned at PG, SG, SF, PF, and C.</p>
+            <p>Each franchise needs {rosterConfig.rosterSize} drafted players and one unique, eligible starter assigned at PG, SG, SF, PF, and C.</p>
             <Link to="/my-team">Open My Team</Link>
           </div>
           {isCommissioner && (
@@ -377,6 +406,24 @@ function LeagueLobbyPage() {
               </button>
             </div>
           )}
+        </section>
+      )}
+
+      {league.status === LEAGUE_STATUS.OFFSEASON && isMember && (
+        <section className="league-phase-notice" id="league-controls">
+          <p className="section-label">SEASON {league.offseason?.seasonCompleted || league.season} COMPLETE</p>
+          <h2>🏆 {league.postseason?.champion?.teamName}</h2>
+          <p>Runner-up: {league.postseason?.runnerUp?.teamName}</p>
+          <p>The league has entered offseason. Season {league.offseason?.nextSeason || league.season + 1} preparation will happen here.</p>
+          <p>Franchises ready: {offseasonReadyCount} / {memberCount}</p>
+          <p className="offseason-finance-summary"><b>CONTRACTS</b> {contractsInitialized ? contractValidation.valid ? "READY" : "REVIEW REQUIRED" : "INITIALIZATION REQUIRED"} <span>PAYROLL {contractsInitialized ? `${formatMoney(payroll)} / ${formatMoney(salaryCap)}` : "—"}</span></p>
+          <Link to="/contracts">Review Team Contracts</Link>
+          <Link to="/league/history">Open Season History</Link>
+          {isCommissioner ? (
+            <button className="button-primary" type="button" disabled={!allOffseasonTeamsReady || Boolean(busyAction)} onClick={() => run("next-season", () => startNextSeason({ leagueId }))}>
+              {busyAction === "next-season" ? "Preparing Next Season..." : `Start Season ${offseasonPreparation.nextSeason}`}
+            </button>
+          ) : <small>{allOffseasonTeamsReady ? `All franchises are ready. Waiting for the commissioner to start Season ${offseasonPreparation.nextSeason}.` : "Waiting for the remaining franchises."}</small>}
         </section>
       )}
 

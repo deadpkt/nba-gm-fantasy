@@ -1,21 +1,35 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "../officialGame.css";
 import BasketballCourt from "./officialGame/BasketballCourt";
 import LiveScoreboard from "./officialGame/LiveScoreboard";
 import {
+  getAuthoritativePresentationFrame,
   getPresentationFrame,
   getProgressivePlayerStats,
 } from "../lib/officialGamePresentation";
 
 const ZERO = { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0 };
 
-function OfficialGamePresentation({ game, renderFinal }) {
+function OfficialGamePresentation({ game, renderFinal, onPresentationComplete }) {
   const [now, setNow] = useState(Date.now());
+  const finalizationRequested = useRef(false);
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(interval);
   }, []);
   const frame = getPresentationFrame(game, now);
+  const authoritativeFrame = getAuthoritativePresentationFrame(game, now);
+  useEffect(() => {
+    finalizationRequested.current = false;
+  }, [game.id]);
+  useEffect(() => {
+    if (game.status !== "in_progress" || !authoritativeFrame.finished || !onPresentationComplete || finalizationRequested.current) return;
+    finalizationRequested.current = true;
+    Promise.resolve(onPresentationComplete(game)).catch(() => {
+      finalizationRequested.current = false;
+    });
+  }, [authoritativeFrame.elapsedMs, authoritativeFrame.finished, game, onPresentationComplete]);
+
   const stats = useMemo(
     () => getProgressivePlayerStats(frame.visibleEvents),
     [frame.visibleEvents],
@@ -62,7 +76,7 @@ function OfficialGamePresentation({ game, renderFinal }) {
           })}
         </section>
       </div>
-      {frame.finished && renderFinal()}
+      {authoritativeFrame.finished && game.status === "completed" ? renderFinal() : frame.finished ? <p className="official-live__finalizing">Finalizing official result...</p> : null}
     </div>
   );
 }

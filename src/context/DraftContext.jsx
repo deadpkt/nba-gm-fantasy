@@ -21,6 +21,8 @@ export function DraftProvider({ children }) {
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState(null);
   const [ownedPlayerIds, setOwnedPlayerIds] = useState(new Set());
+  const leagueStatus = activeLeague?.status;
+  const commissionerUid = activeLeague?.commissionerUid;
 
   useEffect(() => {
     if (!firebaseEnabled || !user || !activeLeagueId) {
@@ -46,8 +48,8 @@ export function DraftProvider({ children }) {
         setDraft(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
         if (
           !snapshot.exists() &&
-          activeLeague?.status === LEAGUE_STATUS.DRAFTING &&
-          activeLeague.commissionerUid === user.uid
+          leagueStatus === LEAGUE_STATUS.DRAFTING &&
+          commissionerUid === user.uid
         ) {
           void initializeLeagueDraft({
             leagueId: activeLeagueId,
@@ -92,7 +94,7 @@ export function DraftProvider({ children }) {
       unsubscribePicks();
       unsubscribeOwnership();
     };
-  }, [activeLeague, activeLeagueId, firebaseEnabled, user]);
+  }, [activeLeagueId, commissionerUid, firebaseEnabled, leagueStatus, user]);
 
   const value = useMemo(
     () => ({

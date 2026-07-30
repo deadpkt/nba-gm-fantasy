@@ -2,9 +2,10 @@ import {
   createLiveGame,
   simulatePossession,
 } from "../shared/liveSimulation.js";
+import { OFFICIAL_PRESENTATION_DURATION_MS } from "../shared/presentationTiming.js";
+import { validateStartingLineup } from "../shared/lineup.js";
 
-const LINEUP_POSITIONS = ["PG", "SG", "SF", "PF", "C"];
-export const OFFICIAL_PRESENTATION_DURATION_MS = 240000;
+export { OFFICIAL_PRESENTATION_DURATION_MS } from "../shared/presentationTiming.js";
 const TRACKED_STATS = ["points", "rebounds", "assists", "steals", "blocks"];
 
 export function createOfficialGameSeed({
@@ -33,22 +34,10 @@ export function createSeededRandom(seed) {
   };
 }
 
-export function getValidStartingLineup(team) {
-  const roster = Array.isArray(team?.roster) ? team.roster : [];
-  const rosterById = new Map(roster.map((player) => [String(player.id), player]));
-  const lineupIds = LINEUP_POSITIONS.map((position) => team?.lineup?.[position]);
-  if (
-    roster.length !== 5 ||
-    lineupIds.some((playerId) => playerId === null || playerId === undefined) ||
-    new Set(lineupIds.map(String)).size !== LINEUP_POSITIONS.length
-  ) {
-    throw new Error("Both franchises need a complete five-player lineup.");
-  }
-  const players = lineupIds.map((playerId) => rosterById.get(String(playerId)));
-  if (players.some((player) => !player)) {
-    throw new Error("Every lineup player must belong to that franchise roster.");
-  }
-  return players;
+export function getValidStartingLineup(team, expectedRosterSize = 5) {
+  const validation = validateStartingLineup(team, expectedRosterSize);
+  if (!validation.valid) throw new Error("Both franchises need a complete, position-eligible five-player lineup.");
+  return validation.players;
 }
 
 const playerBoxScore = (players, stats) =>
@@ -146,9 +135,9 @@ function buildTimeline(possessions, gameIdentity, finalScore) {
   }));
 }
 
-export function simulateOfficialGame({ gameIdentity, homeTeam, awayTeam }) {
-  const home = getValidStartingLineup(homeTeam);
-  const away = getValidStartingLineup(awayTeam);
+export function simulateOfficialGame({ gameIdentity, homeTeam, awayTeam, rosterSize = 5 }) {
+  const home = getValidStartingLineup(homeTeam, rosterSize);
+  const away = getValidStartingLineup(awayTeam, rosterSize);
   const seed = createOfficialGameSeed(gameIdentity);
   const random = createSeededRandom(seed);
   let simulation = createLiveGame(home, away);
@@ -250,6 +239,42 @@ export function buildOfficialCompletion({ game, homeTeam, awayTeam, simulation }
       wins: awayRecord.wins + (homeWon ? 0 : 1),
       losses: awayRecord.losses + (homeWon ? 1 : 0),
     },
+  };
+}
+
+export function buildOfficialGameActivation({ game, homeTeam, awayTeam, startedAt, endsAt, rosterSize = 5 }) {
+  if (!["scheduled", "ready"].includes(game?.status)) {
+    throw new Error("Only a scheduled official game can be activated.");
+  }
+  const simulation = simulateOfficialGame({
+    gameIdentity: {
+      leagueId: game.leagueId,
+      gameId: game.id,
+      season: game.season,
+      scheduleVersion: game.scheduleVersion,
+      homeUid: game.homeUid,
+      awayUid: game.awayUid,
+    },
+    homeTeam,
+    awayTeam,
+    rosterSize,
+  });
+  return {
+    status: "in_progress",
+    runtime: { version: 1 },
+    startedAt,
+    result: simulation.result,
+    boxScore: simulation.boxScore,
+    timeline: simulation.timeline,
+    presentation: {
+      version: 1,
+      speed: 1,
+      durationMs: OFFICIAL_PRESENTATION_DURATION_MS,
+      startedAt,
+      endsAt,
+    },
+    resultGeneratedAt: startedAt,
+    updatedAt: startedAt,
   };
 }
 

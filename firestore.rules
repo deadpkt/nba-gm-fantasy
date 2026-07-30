@@ -33,6 +33,19 @@ service cloud.firestore {
       return leagueData.get('readyMemberIds', []);
     }
 
+    function hasCurrentRosterConfig(leagueData) {
+      let config = leagueData.get('rosterConfig', {});
+      return config.keys().hasOnly(['version', 'rosterSize', 'starterCount', 'benchSize'])
+        && config.version == 2
+        && config.rosterSize == 8
+        && config.starterCount == 5
+        && config.benchSize == 3;
+    }
+
+    function leagueRosterSize(leagueData) {
+      return hasCurrentRosterConfig(leagueData) ? 8 : 5;
+    }
+
     function hasValidSeasonConfig(leagueData) {
       let config = leagueData.seasonConfig;
       return leagueData.maxMembers in [2, 4, 6, 8]
@@ -79,23 +92,18 @@ service cloud.firestore {
       return leagueData.get('seasonReadyMemberIds', []);
     }
 
-    function rosterHasPlayer(team, playerId) {
-      return playerId != null
-        && (team.roster[0].id == playerId
-          || team.roster[1].id == playerId
-          || team.roster[2].id == playerId
-          || team.roster[3].id == playerId
-          || team.roster[4].id == playerId);
+    function offseasonReadyMemberIds(leagueData) {
+      return leagueData.get('offseason', {}).get('readyMemberIds', []);
     }
 
-    function hasValidFivePlayerLineup(team) {
-      return team.roster.size() == 5
+    function hasValidFivePlayerLineup(leagueId, team) {
+      return team.roster.size() == leagueRosterSize(get(/databases/$(database)/documents/leagues/$(leagueId)).data)
         && team.lineup.keys().hasOnly(['PG', 'SG', 'SF', 'PF', 'C'])
-        && rosterHasPlayer(team, team.lineup.PG)
-        && rosterHasPlayer(team, team.lineup.SG)
-        && rosterHasPlayer(team, team.lineup.SF)
-        && rosterHasPlayer(team, team.lineup.PF)
-        && rosterHasPlayer(team, team.lineup.C)
+        && rosterPlayerEligible(team, team.lineup.PG, 'PG')
+        && rosterPlayerEligible(team, team.lineup.SG, 'SG')
+        && rosterPlayerEligible(team, team.lineup.SF, 'SF')
+        && rosterPlayerEligible(team, team.lineup.PF, 'PF')
+        && rosterPlayerEligible(team, team.lineup.C, 'C')
         && team.lineup.PG != team.lineup.SG
         && team.lineup.PG != team.lineup.SF
         && team.lineup.PG != team.lineup.PF
@@ -106,6 +114,42 @@ service cloud.firestore {
         && team.lineup.SF != team.lineup.PF
         && team.lineup.SF != team.lineup.C
         && team.lineup.PF != team.lineup.C;
+    }
+
+    function playerEligible(player, position) {
+      return player.get('eligiblePositions', []).hasAny([position])
+        || player.get('primaryPosition', player.get('position', '')) == position
+        || player.get('position', '') == position
+        || (player.get('position', '') == 'G' && position in ['PG', 'SG'])
+        || (player.get('position', '') == 'F' && position in ['SF', 'PF'])
+        || (player.get('position', '') in ['G-F', 'F-G'] && position in ['SG', 'SF'])
+        || (player.get('position', '') in ['F-C', 'C-F'] && position in ['PF', 'C']);
+    }
+
+    function rosterPlayerEligible(team, playerId, position) {
+      return (team.roster[0].id == playerId && playerEligible(team.roster[0], position))
+        || (team.roster[1].id == playerId && playerEligible(team.roster[1], position))
+        || (team.roster[2].id == playerId && playerEligible(team.roster[2], position))
+        || (team.roster[3].id == playerId && playerEligible(team.roster[3], position))
+        || (team.roster[4].id == playerId && playerEligible(team.roster[4], position))
+        || (team.roster.size() == 8
+          && ((team.roster[5].id == playerId && playerEligible(team.roster[5], position))
+            || (team.roster[6].id == playerId && playerEligible(team.roster[6], position))
+            || (team.roster[7].id == playerId && playerEligible(team.roster[7], position))));
+    }
+
+    function addsOnlyAuthenticatedMember(before, after) {
+      return !(request.auth.uid in before)
+        && request.auth.uid in after
+        && after.hasAll(before)
+        && after.size() == before.size() + 1;
+    }
+
+    function removesOnlyAuthenticatedMember(before, after) {
+      return request.auth.uid in before
+        && !(request.auth.uid in after)
+        && before.hasAll(after)
+        && after.size() == before.size() - 1;
     }
 
     function isOwnSeasonReadinessUpdate(leagueId) {
@@ -120,13 +164,10 @@ service cloud.firestore {
           'seasonReadyMemberIds', 'updatedAt'
         ])
         && request.resource.data.updatedAt == request.time
-        && ((hasValidFivePlayerLineup(teamAfter)
-            && request.auth.uid in after
-            && after.hasAll(before)
-            && after.size() == before.size() + (request.auth.uid in before ? 0 : 1))
-          || (!(request.auth.uid in after)
-            && before.hasAll(after)
-            && after.size() == before.size() - (request.auth.uid in before ? 1 : 0)));
+        && teamAfter.ownerUid == request.auth.uid
+        && ((addsOnlyAuthenticatedMember(before, after)
+            && hasValidFivePlayerLineup(leagueId, teamAfter))
+          || removesOnlyAuthenticatedMember(before, after));
     }
 
     function isSeasonReadyLineupUpdate(leagueId, userId) {
@@ -139,6 +180,40 @@ service cloud.firestore {
         && request.resource.data.roster == resource.data.roster
         && request.resource.data.updatedAt == request.time
         && !(userId in seasonReadyMemberIds(leagueAfter));
+    }
+
+    function isOwnOffseasonReadinessUpdate(leagueId) {
+      let before = offseasonReadyMemberIds(resource.data);
+      let after = offseasonReadyMemberIds(request.resource.data);
+      let offseasonBefore = resource.data.offseason;
+      let offseasonAfter = request.resource.data.offseason;
+      let teamAfter = getAfter(/databases/$(database)/documents/leagues/$(leagueId)/teams/$(request.auth.uid)).data;
+      return signedIn()
+        && resource.data.status == 'offseason'
+        && request.resource.data.status == 'offseason'
+        && request.auth.uid in resource.data.memberIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offseason', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && offseasonAfter.keys().hasOnly(['seasonCompleted', 'nextSeason', 'status', 'startedAt', 'preparationVersion', 'readyMemberIds'])
+        && offseasonAfter.seasonCompleted == offseasonBefore.seasonCompleted
+        && offseasonAfter.nextSeason == resource.data.season + 1
+        && offseasonAfter.status == offseasonBefore.status
+        && offseasonAfter.startedAt == offseasonBefore.startedAt
+        && offseasonAfter.preparationVersion == 1
+        && teamAfter.ownerUid == request.auth.uid
+        && ((addsOnlyAuthenticatedMember(before, after)
+            && hasValidFivePlayerLineup(leagueId, teamAfter))
+          || removesOnlyAuthenticatedMember(before, after));
+    }
+
+    function isOffseasonLineupUpdate(leagueId, userId) {
+      let league = get(/databases/$(database)/documents/leagues/$(leagueId)).data;
+      let leagueAfter = getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data;
+      return league.status == 'offseason'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lineup', 'updatedAt'])
+        && request.resource.data.roster == resource.data.roster
+        && request.resource.data.updatedAt == request.time
+        && !(userId in offseasonReadyMemberIds(leagueAfter));
     }
 
     function isInSeasonTeamConfigurationUpdate(leagueId) {
@@ -156,11 +231,14 @@ service cloud.firestore {
     function isCanonicalDraftPlayer(player) {
       let catalog = get(/databases/$(database)/documents/playerCatalogs/current/players/$(player.id)).data;
       return player.keys().hasOnly([
-          'id', 'name', 'position', 'team', 'overall', 'image', 'color', 'stats'
+          'id', 'name', 'position', 'primaryPosition', 'eligiblePositions',
+          'team', 'overall', 'image', 'color', 'stats'
         ])
         && player.id == catalog.id
         && player.name == catalog.name
         && player.position == catalog.position
+        && player.primaryPosition == catalog.primaryPosition
+        && player.eligiblePositions == catalog.eligiblePositions
         && player.team == catalog.team
         && player.overall == catalog.overall
         && player.image == catalog.image
@@ -180,7 +258,8 @@ service cloud.firestore {
           'roster', 'lineup', 'updatedAt'
         ])
         && request.resource.data.roster.size() == resource.data.roster.size() + 1
-        && request.resource.data.roster.size() <= 5
+        && request.resource.data.roster.size()
+          <= leagueRosterSize(get(/databases/$(database)/documents/leagues/$(leagueId)).data)
         && request.resource.data.roster.hasAll(resource.data.roster)
         && isCanonicalDraftPlayer(nextPlayer)
         && request.resource.data.updatedAt == request.time;
@@ -223,6 +302,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.commissionerUid == request.auth.uid
         && hasValidSeasonConfig(request.resource.data)
+        && hasCurrentRosterConfig(request.resource.data)
         && request.resource.data.memberIds.size() == 1
         && request.resource.data.memberIds[0] == request.auth.uid
         && request.resource.data.readyMemberIds.size() == 0
@@ -265,6 +345,7 @@ service cloud.firestore {
           && request.resource.data.seasonStartedAt == request.time
           && request.resource.data.updatedAt == request.time)
         || isOwnSeasonReadinessUpdate(leagueId)
+        || isOwnOffseasonReadinessUpdate(leagueId)
         || (isCommissioner(leagueId)
           && resource.data.status == 'lobby'
           && request.resource.data.status == 'cancelled'
@@ -339,6 +420,7 @@ service cloud.firestore {
           && request.resource.data.ownerUid == userId;
         allow update: if isLeagueMember(leagueId) && request.auth.uid == userId
           && (isSeasonReadyLineupUpdate(leagueId, userId)
+            || isOffseasonLineupUpdate(leagueId, userId)
             || isInSeasonTeamConfigurationUpdate(leagueId)
             || isDraftRosterAppend(leagueId, userId));
         allow delete: if signedIn()
@@ -347,6 +429,16 @@ service cloud.firestore {
           && resource.data.roster.size() == 0
           && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
           && !(request.auth.uid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds);
+      }
+
+      match /seasons/{seasonId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create, update, delete: if false;
+      }
+
+      match /contracts/{playerId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create, update, delete: if false;
       }
 
       match /games/{gameId} {
@@ -425,7 +517,8 @@ service cloud.firestore {
           && request.resource.data.currentPickNumber == 1
           && request.resource.data.currentDrafterUid == request.resource.data.draftOrder[0]
           && request.resource.data.picksMade == 0
-          && request.resource.data.totalRounds == 5
+          && request.resource.data.totalRounds
+            == leagueRosterSize(getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data)
           && request.resource.data.lastPick == null
           && request.resource.data.pickDeadlineAt == null
           && request.resource.data.startedAt == request.time

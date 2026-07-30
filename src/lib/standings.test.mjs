@@ -73,3 +73,8 @@ test("scheduled, in-progress, malformed, and another-season games are ignored", 
   ];
   calculateStandings(teams, ignored, 1).forEach((row) => assert.equal(row.gp, 0));
 });
+
+test("playoff games never affect regular-season standings", () => {
+  const playoffGame = { ...game({ id: "final", round: 99, homeUid: "alpha", awayUid: "beta", homeScore: 140, awayScore: 80 }), stage: "final" };
+  calculateStandings(teams, [playoffGame], 1).forEach((row) => assert.equal(row.gp, 0));
+});

@@ -6,7 +6,7 @@
   "engines": { "node": "20" },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "build": "node --check index.js && node --check lib/completeOfficialGame.js"
+    "build": "node --check index.js && node --check lib/completeOfficialGame.js && node --check shared/contracts.js && node --check shared/nbaCatalog.js && node --check lib/balldontlie.js && node --check lib/syncNbaCatalog.js"
   },
   "dependencies": {
     "firebase-admin": "^14.2.0",

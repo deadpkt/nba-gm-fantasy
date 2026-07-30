@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
+import { getInternalReturnPath } from "../lib/routeAccess";
 
 function AuthForm({ mode }) {
   const isSignUp = mode === "signup";
@@ -25,7 +26,7 @@ function AuthForm({ mode }) {
 
   useEffect(() => {
     if (user && !loading)
-      navigate(location.state?.from?.pathname || "/", { replace: true });
+      navigate(getInternalReturnPath(location.state?.from), { replace: true });
   }, [user, loading, location.state, navigate]);
 
   function updateField(event) {
@@ -150,7 +151,7 @@ function AuthForm({ mode }) {
       </button>
       <p className="auth-switch">
         {isSignUp ? "Already have an account?" : "New to Full Court?"}{" "}
-        <Link to={isSignUp ? "/login" : "/signup"}>
+        <Link to={isSignUp ? "/login" : "/signup"} state={location.state}>
           {isSignUp ? "Login" : "Create one"}
         </Link>
       </p>

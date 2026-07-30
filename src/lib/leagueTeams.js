@@ -4,8 +4,10 @@ import {
   claimLeaguePlayerOwnership,
   releaseLeaguePlayerOwnership,
 } from "./playerOwnership";
-import { LINEUP_POSITIONS } from "../utils/team";
+import { buildLineupAssignment, getLineupValidation, LINEUP_POSITIONS, normalizePlayerId, normalizeRosterLineup } from "../utils/team";
 import { LEAGUE_STATUS } from "./leagueStatuses";
+import { buildOffseasonReadyMemberIds, normalizeOffseasonPreparation } from "./offseasonPreparation";
+import { normalizeRosterConfig } from "./rosterConfig";
 
 export const DEFAULT_LEAGUE_STRATEGY = "balanced";
 
@@ -18,19 +20,7 @@ const normalizeRecord = (record) => ({
 });
 
 export function normalizeLeagueLineup(roster, lineup = {}) {
-  const savedLineup =
-    lineup && typeof lineup === "object" && !Array.isArray(lineup)
-      ? lineup
-      : {};
-
-  return Object.fromEntries(
-    LINEUP_POSITIONS.map((position) => [
-      position,
-      roster.some((player) => player.id === savedLineup[position])
-        ? savedLineup[position]
-        : null,
-    ]),
-  );
+  return normalizeRosterLineup(roster, lineup);
 }
 
 export function createInitialLeagueTeam(user) {
@@ -61,18 +51,14 @@ export function normalizeLeagueTeam(id, data = {}) {
   };
 }
 
-export function isLeagueTeamSeasonReady(teamData = {}) {
+export function isLeagueTeamSeasonReady(teamData = {}, league = {}) {
   const roster = Array.isArray(teamData.roster) ? teamData.roster : [];
   const lineup = teamData.lineup || {};
-  const rosterIds = new Set(roster.map((player) => player.id));
-  const lineupIds = LINEUP_POSITIONS.map((position) => lineup[position]);
+  return roster.length === normalizeRosterConfig(league).rosterSize && getLineupValidation(roster, lineup).valid;
+}
 
-  return (
-    roster.length === 5 &&
-    lineupIds.every((playerId) => playerId !== null && playerId !== undefined) &&
-    new Set(lineupIds).size === LINEUP_POSITIONS.length &&
-    lineupIds.every((playerId) => rosterIds.has(playerId))
-  );
+export function buildLeagueLineupAssignment(roster, lineup, position, playerId) {
+  return buildLineupAssignment(roster, lineup, position, playerId);
 }
 
 const leagueTeamRef = (leagueId, userId) =>
@@ -99,7 +85,7 @@ export async function setLeagueTeamSeasonConfirmation(
     if (league.status !== LEAGUE_STATUS.SEASON_READY) {
       throw new Error("Lineups can only be confirmed during team setup.");
     }
-    if (confirmed && !isLeagueTeamSeasonReady(teamSnapshot.data())) {
+    if (confirmed && !isLeagueTeamSeasonReady(teamSnapshot.data(), league)) {
       throw new Error("Assign a unique roster player at PG, SG, SF, PF, and C first.");
     }
 
@@ -118,6 +104,22 @@ export async function setLeagueTeamSeasonConfirmation(
   });
 }
 
+export async function setLeagueTeamOffseasonConfirmation(leagueId, userId, confirmed) {
+  const teamRef = leagueTeamRef(leagueId, userId);
+  const leagueRef = doc(db, "leagues", leagueId);
+  await runTransaction(db, async (transaction) => {
+    const [teamSnapshot, leagueSnapshot] = await Promise.all([transaction.get(teamRef), transaction.get(leagueRef)]);
+    if (!teamSnapshot.exists() || !leagueSnapshot.exists()) throw new Error("Your franchise or league is unavailable.");
+    const league = leagueSnapshot.data();
+    const preparation = normalizeOffseasonPreparation(league);
+    const readyMemberIds = buildOffseasonReadyMemberIds({ league, actorUid: userId, targetUid: userId, confirmed, team: teamSnapshot.data() });
+    transaction.update(leagueRef, {
+      offseason: { ...league.offseason, preparationVersion: 1, nextSeason: preparation.nextSeason, readyMemberIds },
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
 async function updateRosterAndLineup(
   leagueId,
   userId,
@@ -125,15 +127,16 @@ async function updateRosterAndLineup(
   updateOwnership = null,
 ) {
   const teamRef = leagueTeamRef(leagueId, userId);
+  const leagueRef = doc(db, "leagues", leagueId);
 
   await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(teamRef);
-    if (!snapshot.exists()) {
+    const [snapshot, leagueSnapshot] = await Promise.all([transaction.get(teamRef), transaction.get(leagueRef)]);
+    if (!snapshot.exists() || !leagueSnapshot.exists()) {
       throw new Error("Your franchise could not be found in this league.");
     }
 
     const current = normalizeLeagueTeam(snapshot.id, snapshot.data());
-    const nextRoster = change(current.roster);
+    const nextRoster = change(current.roster, leagueSnapshot.data());
     const nextLineup = normalizeLeagueLineup(nextRoster, current.lineup);
 
     if (updateOwnership) {
@@ -153,10 +156,10 @@ export async function addLeagueTeamPlayer(leagueId, userId, player) {
     throw new Error("This player cannot be added to the current roster.");
   }
 
-  await updateRosterAndLineup(leagueId, userId, (roster) => {
+  await updateRosterAndLineup(leagueId, userId, (roster, league) => {
     if (
-      roster.length >= 5 ||
-      roster.some((member) => member.id === player.id)
+      roster.length >= normalizeRosterConfig(league).rosterSize ||
+      roster.some((member) => normalizePlayerId(member.id) === normalizePlayerId(player.id))
     ) {
       throw new Error("This player cannot be added to the current roster.");
     }
@@ -170,9 +173,9 @@ export async function removeLeagueTeamPlayer(leagueId, userId, playerId) {
   await updateRosterAndLineup(
     leagueId,
     userId,
-    (roster) => roster.filter((player) => player.id !== playerId),
+    (roster) => roster.filter((player) => normalizePlayerId(player.id) !== normalizePlayerId(playerId)),
     async (transaction, roster) => {
-      if (roster.some((player) => player.id === playerId)) {
+      if (roster.some((player) => normalizePlayerId(player.id) === normalizePlayerId(playerId))) {
         await releaseLeaguePlayerOwnership(
           transaction,
           leagueId,
@@ -209,19 +212,7 @@ export async function assignLeagueTeamPlayer(
     }
 
     const current = normalizeLeagueTeam(snapshot.id, snapshot.data());
-    if (playerId && !current.roster.some((player) => player.id === playerId)) {
-      throw new Error("That player is not on this franchise roster.");
-    }
-
-    const nextLineup = Object.fromEntries(
-      Object.entries(current.lineup).map(([slot, assignedId]) => [
-        slot,
-        assignedId === playerId ? null : assignedId,
-      ]),
-    );
-    nextLineup[position] = playerId || null;
-
-    const normalizedLineup = normalizeLeagueLineup(current.roster, nextLineup);
+    const normalizedLineup = buildLeagueLineupAssignment(current.roster, current.lineup, position, playerId);
     transaction.update(teamRef, {
       lineup: normalizedLineup,
       updatedAt: serverTimestamp(),
@@ -235,6 +226,14 @@ export async function assignLeagueTeamPlayer(
       if (readyIds.includes(userId)) {
         transaction.update(leagueRef, {
           seasonReadyMemberIds: readyIds.filter((memberId) => memberId !== userId),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } else if (league.status === LEAGUE_STATUS.OFFSEASON) {
+      const preparation = normalizeOffseasonPreparation(league);
+      if (preparation.readyMemberIds.includes(userId)) {
+        transaction.update(leagueRef, {
+          offseason: { ...league.offseason, preparationVersion: 1, nextSeason: preparation.nextSeason, readyMemberIds: preparation.readyMemberIds.filter((memberId) => memberId !== userId) },
           updatedAt: serverTimestamp(),
         });
       }

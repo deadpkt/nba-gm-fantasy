@@ -8,13 +8,12 @@ import { normalizeLeagueLineup } from "./leagueTeams";
 import { db } from "./firebase";
 import { LEAGUE_STATUS } from "./leagueStatuses";
 import { playerOwnershipRef } from "./playerOwnership";
+import { isDraftPickTotalComplete, LEGACY_ROSTER_SIZE, normalizeRosterConfig } from "./rosterConfig";
 
 export const DRAFT_STATUS = Object.freeze({
   ACTIVE: "active",
   COMPLETED: "completed",
 });
-
-export const DRAFT_ROUNDS = 5;
 
 export const draftStateRef = (leagueId) =>
   doc(db, "leagues", leagueId, "draft", "state");
@@ -30,7 +29,7 @@ export function getDrafterForPick(draftOrder, round, pickInRound) {
   return draftOrder[index];
 }
 
-export function buildInitialDraftState(leagueId, draftOrder) {
+export function buildInitialDraftState(leagueId, draftOrder, totalRounds = LEGACY_ROSTER_SIZE) {
   if (!draftOrder.length) throw new Error("A draft requires league members.");
   return {
     leagueId,
@@ -41,7 +40,7 @@ export function buildInitialDraftState(leagueId, draftOrder) {
     currentPickNumber: 1,
     currentDrafterUid: draftOrder[0],
     picksMade: 0,
-    totalRounds: DRAFT_ROUNDS,
+    totalRounds,
     lastPick: null,
     pickDeadlineAt: null,
     startedAt: serverTimestamp(),
@@ -84,7 +83,7 @@ export async function initializeLeagueDraft({ leagueId, userId }) {
     }
     transaction.set(
       stateRef,
-      buildInitialDraftState(leagueId, [...league.memberIds]),
+      buildInitialDraftState(leagueId, [...league.memberIds], normalizeRosterConfig(league).rosterSize),
     );
   });
 }
@@ -94,6 +93,8 @@ function canonicalPlayerSnapshot(player) {
     id: player.id,
     name: player.name,
     position: player.position,
+    primaryPosition: player.primaryPosition,
+    eligiblePositions: player.eligiblePositions,
     team: player.team,
     overall: player.overall,
     image: player.image,
@@ -136,7 +137,8 @@ export async function makeDraftPick({ leagueId, userId, playerId }) {
     if (!leagueSnapshot.exists() || !draftSnapshot.exists()) {
       throw new Error("The shared league draft is unavailable.");
     }
-    if (leagueSnapshot.data().status !== LEAGUE_STATUS.DRAFTING) {
+    const league = leagueSnapshot.data();
+    if (league.status !== LEAGUE_STATUS.DRAFTING) {
       throw new Error("The league is not in the drafting phase.");
     }
 
@@ -161,8 +163,9 @@ export async function makeDraftPick({ leagueId, userId, playerId }) {
 
     const team = teamSnapshot.data();
     const roster = Array.isArray(team.roster) ? team.roster : [];
-    if (roster.length >= DRAFT_ROUNDS) {
-      throw new Error("Your five-player roster is already complete.");
+    const rosterSize = normalizeRosterConfig(league).rosterSize;
+    if (draft.totalRounds !== rosterSize || roster.length >= rosterSize) {
+      throw new Error(`Your ${rosterSize}-player roster is already complete.`);
     }
 
     const player = canonicalPlayerSnapshot(playerSnapshot.data());
@@ -174,8 +177,7 @@ export async function makeDraftPick({ leagueId, userId, playerId }) {
     }
 
     const nextPicksMade = draft.picksMade + 1;
-    const totalPicks = draft.draftOrder.length * draft.totalRounds;
-    const completed = nextPicksMade === totalPicks;
+    const completed = isDraftPickTotalComplete(league, draft.draftOrder.length, nextPicksMade);
     let nextRound = draft.currentRound;
     let nextPickInRound = draft.currentPickInRound;
     let nextDrafterUid = null;

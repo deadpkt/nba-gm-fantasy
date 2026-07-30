@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-label="Player portrait unavailable">
+  <rect width="480" height="360" fill="#0b1b30"/>
+  <circle cx="240" cy="132" r="63" fill="#526981"/>
+  <path d="M104 360c9-92 59-145 136-145s127 53 136 145" fill="#526981"/>
+  <path d="M0 330h480" stroke="#d87736" stroke-width="8"/>
+</svg>

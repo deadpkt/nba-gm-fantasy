@@ -1,10 +1,14 @@
+import { memo } from "react";
+import { openPlayerDetails } from "./player/PlayerDetailsModal";
+import PlayerImage from "./player/PlayerImage";
+
 function PlayerCard({
   player,
   actionLabel = "Add to team",
   onAction,
   disabled = false,
 }) {
-  const { name, position, team, overall, stats, image, color } = player;
+  const { name, position, team, overall, stats, color } = player;
 
   return (
     <article
@@ -36,7 +40,7 @@ function PlayerCard({
       <div className="player-card__team-mark" aria-hidden="true">
         {team}
       </div>
-      <img className="player-card__image" src={image} alt={name} />
+      <PlayerImage className="player-card__image" player={player} />
       <div className="player-card__details">
         <p className="player-card__role">STARTING FIVE CANDIDATE</p>
         <h2>{name}</h2>
@@ -70,5 +74,4 @@ function PlayerCard({
   );
 }
 
-export default PlayerCard;
-import { openPlayerDetails } from "./player/PlayerDetailsModal";
+export default memo(PlayerCard);

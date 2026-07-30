@@ -120,6 +120,67 @@
 .league-status-chip--drafting { border-left: 3px solid #e5ad45; }
 .league-status-chip--season_ready { border-left: 3px solid #6cb58b; }
 .league-status-chip--regular_season { border-left: 3px solid var(--flow-red); }
+.league-status-chip--playoffs { border-left: 3px solid #f0b454; }
+.league-status-chip--offseason { border-left: 3px solid #8296b2; }
+
+.league-context-strip { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-height: 32px; padding: 5px max(16px, calc((100vw - 1440px) / 2)); border-bottom: 1px solid #ffffff0d; background: #06111ee8; }
+.league-context-strip a { display: flex; align-items: center; gap: 8px; min-width: 0; color: #dfe7f1; text-decoration: none; }
+.league-context-strip a b { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; font: 800 11px 'Barlow Condensed'; }
+.league-context-strip a span { color: #8191a5; font: 700 8px 'DM Mono'; letter-spacing: .07em; }
+.league-context-strip > i { width: 1px; height: 12px; background: #405064; }
+.league-phase-badge { border-radius: 999px; padding: 4px 7px; background: #ffffff0b; color: #bdc8d6; font: 800 8px 'DM Mono'; letter-spacing: .08em; }
+.league-phase-badge--drafting, .league-phase-badge--playoffs { color: #efb868; }
+.league-phase-badge--season_ready { color: #83c9a0; }
+.league-phase-badge--regular_season { color: #ff8799; }
+.league-phase-badge--offseason { color: #aebbd0; }
+
+.league-guide {
+  max-width: 1120px;
+  margin: 18px auto 20px;
+  overflow: hidden;
+  border: 1px solid var(--flow-line);
+  border-top: 3px solid #d87736;
+  border-radius: 4px;
+  background: linear-gradient(105deg, #101f33, #081522 68%);
+  box-shadow: 0 18px 38px #0005;
+}
+.league-guide__action { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 24px; }
+.league-guide__action > div { min-width: 0; }
+.league-guide__action span, .league-guide__journey > span, .continue-league-card > header > span, .league-onboarding > div > span { color: #d68a54; font: 800 9px 'DM Mono'; letter-spacing: .14em; }
+.league-guide__action h2 { margin: 5px 0 4px; color: #fff; font: 900 clamp(24px, 3vw, 36px)/.9 'Barlow Condensed'; text-transform: uppercase; }
+.league-guide__action p { max-width: 650px; margin: 0; color: #9eacbd; font-size: 12px; line-height: 1.55; }
+.league-guide__action small { display: block; margin-top: 7px; color: #e3c59f; font: 700 9px 'DM Mono'; }
+.basketball-action { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 18px; min-height: 44px; padding: 11px 17px; border: 1px solid transparent; border-radius: 3px; text-decoration: none; text-transform: uppercase; font: 800 12px 'Barlow Condensed'; letter-spacing: .07em; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+.basketball-action:hover { transform: translateY(-1px); }
+.basketball-action--primary { background: #d87736; color: #fff; }
+.basketball-action--primary:hover { background: #e48849; }
+.basketball-action--secondary { border-color: #526278; background: transparent; color: #dce4ee; }
+.basketball-action--secondary:hover { border-color: #8493a6; background: #ffffff0a; }
+.league-guide__journey { padding: 15px 24px 18px; border-top: 1px solid var(--flow-line); background: #06111e99; }
+.league-guide__journey ol { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; margin: 13px 0 0; padding: 0; list-style: none; }
+.league-guide__journey ol::before { position: absolute; top: 13px; right: 7%; left: 7%; height: 1px; background: #34465b; content: ''; }
+.league-guide__journey li { position: relative; z-index: 1; display: grid; justify-items: center; gap: 7px; color: #75859a; text-align: center; }
+.league-guide__journey li i { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid #3d4f64; border-radius: 50%; background: #091725; font: 800 12px 'DM Mono'; font-style: normal; }
+.league-guide__journey li b { font: 800 11px 'Barlow Condensed'; text-transform: uppercase; }
+.league-guide__journey li.is-complete { color: #85c7a1; }
+.league-guide__journey li.is-complete i { border-color: #57926f; }
+.league-guide__journey li.is-active { color: #fff; }
+.league-guide__journey li.is-active i { border-color: #d87736; background: #d87736; box-shadow: 0 0 18px #d8773655; }
+.league-guide--compact { margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.league-guide--compact .league-guide__action { padding: 0; }
+
+.continue-league-card, .league-onboarding { max-width: 1280px; margin: 18px auto; border: 1px solid var(--flow-line); border-left: 4px solid #d87736; background: linear-gradient(110deg, #101e31, #091522); box-shadow: 0 16px 35px #0004; }
+.continue-league-card { display: grid; grid-template-columns: minmax(220px, .55fr) minmax(0, 1fr); align-items: center; gap: 25px; padding: 20px 23px; }
+.continue-league-card > header { display: grid; gap: 8px; }
+.continue-league-card > header div { display: grid; gap: 4px; }
+.continue-league-card > header b { overflow: hidden; color: #fff; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; font: 900 27px/.9 'Barlow Condensed'; }
+.continue-league-card > header small { color: #93a3b6; font: 800 9px 'DM Mono'; letter-spacing: .08em; }
+.league-onboarding { display: flex; align-items: center; justify-content: space-between; gap: 30px; padding: 24px; }
+.league-onboarding h2 { margin: 6px 0 13px; color: #fff; font: 900 29px/.9 'Barlow Condensed'; text-transform: uppercase; }
+.league-onboarding ol { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; padding: 0; counter-reset: journey; list-style: none; }
+.league-onboarding li { color: #9cabbc; font-size: 11px; }
+.league-onboarding li::before { margin-right: 6px; color: #d87736; counter-increment: journey; content: counter(journey) '.'; font: 800 9px 'DM Mono'; }
+.league-onboarding__actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .franchise-list > article { min-height: 58px; background: #0a1728; }
 .franchise-list > article:nth-of-type(even) { background: #0c1a2c; }
 .franchise-list > article i { border-radius: 999px; padding: 5px 8px; }
@@ -177,6 +238,9 @@
 .compact-schedule details > div b { color: #e8edf4; font: 700 13px 'Barlow Condensed'; }
 
 @media (max-width: 800px) {
+  .league-guide, .continue-league-card, .league-onboarding { margin-right: 20px; margin-left: 20px; }
+  .continue-league-card { grid-template-columns: 1fr; }
+  .league-onboarding { align-items: flex-start; flex-direction: column; }
   .season-setup-panel { grid-template-columns: 1fr; margin-right: 20px; margin-left: 20px; }
   .season-setup-panel > div:nth-of-type(3) { justify-content: flex-start; margin-top: 12px; }
   .team-dashboard { grid-template-columns: repeat(2, 1fr); padding-right: 20px; padding-left: 20px; }
@@ -185,6 +249,19 @@
 }
 
 @media (max-width: 560px) {
+  .league-context-strip { justify-content: center; padding-right: 12px; padding-left: 12px; }
+  .league-context-strip a b { max-width: 130px; }
+  .league-guide, .continue-league-card, .league-onboarding { margin-right: 12px; margin-left: 12px; }
+  .league-guide__action { align-items: stretch; flex-direction: column; padding: 18px; }
+  .league-guide__action .basketball-action { width: 100%; }
+  .league-guide__journey { padding: 16px 18px; }
+  .league-guide__journey ol { grid-template-columns: 1fr; gap: 8px; }
+  .league-guide__journey ol::before { top: 10px; bottom: 10px; left: 13px; width: 1px; height: auto; }
+  .league-guide__journey li { grid-template-columns: 27px 1fr; align-items: center; justify-items: start; text-align: left; }
+  .league-guide--compact { margin: 0; }
+  .league-guide--compact .league-guide__action { padding: 0; }
+  .continue-league-card, .league-onboarding { padding: 18px; }
+  .league-onboarding__actions { align-items: stretch; flex-direction: column; width: 100%; }
   .team-setup-hero { padding-top: 34px; }
   .season-setup-panel { margin: 15px 12px 0; padding: 18px; }
   .season-setup-panel > div { align-items: stretch !important; flex-direction: column; }

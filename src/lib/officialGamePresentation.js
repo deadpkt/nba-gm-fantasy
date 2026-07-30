@@ -27,6 +27,17 @@ export function getPresentationFrame(game, nowMs = Date.now()) {
   };
 }
 
+export function getAuthoritativePresentationFrame(game, nowMs = Date.now()) {
+  return getPresentationFrame(game, nowMs);
+}
+
+export function isOfficialGameFinalVisible(game, nowMs = Date.now()) {
+  if (game?.status !== "completed") return false;
+  const hasPresentation = Array.isArray(game?.timeline) && game.timeline.length > 0 && presentationStartedAtMs(game) !== null;
+  // Historical completed games without presentation metadata remain readable.
+  return !hasPresentation || getAuthoritativePresentationFrame(game, nowMs).finished;
+}
+
 export function getProgressivePlayerStats(visibleEvents) {
   const totals = {};
   visibleEvents.forEach((event) => {

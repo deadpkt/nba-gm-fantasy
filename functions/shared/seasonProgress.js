@@ -30,3 +30,14 @@ export function isRoundCompleteAfterGame(games, completingGameId) {
     (game) => game.id === completingGameId || game.status === "completed",
   );
 }
+
+export function isGameProgressionComplete(game) {
+  if (game?.status !== "completed") return false;
+  const hasPersistedPresentation = Array.isArray(game.timeline) && game.timeline.length > 0 && game.presentation;
+  // Historical completed games predate the presentation completion marker.
+  return !hasPersistedPresentation || Boolean(game.presentationCompletedAt);
+}
+
+export function isRoundProgressionComplete(games) {
+  return games.length > 0 && games.every(isGameProgressionComplete);
+}

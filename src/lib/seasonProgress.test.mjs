@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createSeasonProgress,
   isRoundCompleteAfterGame,
+  isRoundProgressionComplete,
   nextRoundToStart,
   ROUND_STATUS,
 } from "./seasonProgress.js";
@@ -14,6 +15,16 @@ test("season starts with round one pending", () => {
     totalRounds: 12,
     regularSeasonComplete: false,
   });
+});
+
+test("presentation-backed games unlock progression only after trusted completion", () => {
+  const liveResult = { status: "in_progress", result: { homeScore: 100 }, timeline: [{ eventType: "game_end" }], presentation: { startedAt: 1 } };
+  const prematurelyCompleted = { ...liveResult, status: "completed" };
+  const authoritativelyCompleted = { ...prematurelyCompleted, presentationCompletedAt: 2 };
+  assert.equal(isRoundProgressionComplete([liveResult]), false);
+  assert.equal(isRoundProgressionComplete([prematurelyCompleted]), false);
+  assert.equal(isRoundProgressionComplete([authoritativelyCompleted]), true);
+  assert.equal(isRoundProgressionComplete([{ status: "completed" }]), true);
 });
 
 test("round completes only when all scheduled games are final", () => {

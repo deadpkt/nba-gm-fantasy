@@ -1,16 +1,19 @@
 import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
+import LeagueProgress from "../components/LeagueProgress";
 import { openPlayerDetails } from "../components/player/PlayerDetailsModal";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
+import { normalizeRosterConfig } from "../lib/rosterConfig";
 import { getLineupOverall, isLineupComplete } from "../utils/team";
 
 function HomePage() {
   const { user } = useAuth();
   const { roster, lineup, record, leagueTeam } = useLeagueTeam();
   const { activeLeague, activeLeagueId, members } = useLeague();
+  const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
   const lineupReady = isLineupComplete(roster, lineup);
   const overall = getLineupOverall(roster, lineup);
   const name = user.displayName || "Coach";
@@ -50,6 +53,25 @@ function HomePage() {
           <div className="dashboard-welcome__live"><i /><span>FRANCHISE ONLINE</span><b>{lineupReady ? "GAME READY" : "LINEUP SETUP"}</b></div>
         </section>
 
+        {activeLeague ? (
+          <section className="continue-league-card">
+            <header>
+              <span>CONTINUE YOUR LEAGUE</span>
+              <div><b>{activeLeague.name}</b><small>SEASON {activeLeague.season} · {activeLeague.status.replaceAll("_", " ").toUpperCase()}</small></div>
+            </header>
+            <LeagueProgress compact />
+          </section>
+        ) : (
+          <section className="league-onboarding">
+            <div>
+              <span>HOW A LEAGUE WORKS</span>
+              <h2>Build a franchise across seasons.</h2>
+              <ol><li>Create or join</li><li>Draft your roster</li><li>Set your starting five</li><li>Play the regular season</li><li>Reach the playoffs</li><li>Build your franchise again</li></ol>
+            </div>
+            <div className="league-onboarding__actions"><Link className="basketball-action basketball-action--primary" to="/league">Create League <b>→</b></Link><Link className="basketball-action basketball-action--secondary" to="/league">Join League <b>→</b></Link></div>
+          </section>
+        )}
+
         <section className="dashboard-hero-card" aria-label="Team overview">
           <div className="dashboard-hero-card__noise" aria-hidden="true" />
           <div className="dashboard-hero-card__identity">
@@ -61,7 +83,7 @@ function HomePage() {
           <div className="dashboard-hero-card__overall">
             <span>TEAM OVERALL</span>
             <b>{overall || "--"}</b>
-            <small>{lineupReady ? "STARTING FIVE ACTIVE" : `${roster.length}/5 PLAYERS SELECTED`}</small>
+            <small>{lineupReady ? "STARTING FIVE ACTIVE" : `${roster.length}/${rosterSize} PLAYERS SELECTED`}</small>
           </div>
           <div className="dashboard-hero-card__silhouette" aria-hidden="true">FC</div>
         </section>

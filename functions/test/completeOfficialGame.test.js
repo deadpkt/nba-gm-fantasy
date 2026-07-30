@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildOfficialCompletion,
+  buildOfficialGameActivation,
   isOfficialLeagueGamePath,
   simulateOfficialGame,
 } from "../lib/completeOfficialGame.js";
@@ -86,10 +87,69 @@ test("records update once and a completed retry is immutable", () => {
   const first = buildOfficialCompletion({ game: { ...identity, status: "in_progress" }, homeTeam, awayTeam, simulation });
   assert.equal(first.homeRecord.wins + first.homeRecord.losses, 5);
   assert.equal(first.awayRecord.wins + first.awayRecord.losses, 5);
-  const presentation = { version: 1, durationMs: 240000, startedAt: 1000 };
+  const presentation = { version: 1, durationMs: 60000, startedAt: 1000 };
   const retry = buildOfficialCompletion({ game: { ...identity, status: "completed", result: first.result, boxScore: first.boxScore, timeline: first.timeline, presentation }, homeTeam: { ...homeTeam, record: first.homeRecord }, awayTeam: { ...awayTeam, record: first.awayRecord }, simulation });
   assert.deepEqual(retry, { alreadyCompleted: true, result: first.result, boxScore: first.boxScore, timeline: first.timeline, presentation });
   assert.equal("homeRecord" in retry, false);
+});
+
+test("trusted round start activates a scheduled snapshot without completing it", () => {
+  const homeTeam = team("home", "H", 82);
+  const awayTeam = team("away", "A", 80);
+  const activation = buildOfficialGameActivation({
+    game: { ...identity, id: identity.gameId, status: "scheduled" },
+    homeTeam,
+    awayTeam,
+    startedAt: 1_000,
+    endsAt: 61_000,
+  });
+  assert.equal(activation.status, "in_progress");
+  assert.ok(activation.result);
+  assert.ok(activation.timeline.length > 0);
+  assert.ok(activation.boxScore);
+  assert.equal(activation.presentation.startedAt, 1_000);
+  assert.equal(activation.presentation.endsAt, 61_000);
+  assert.equal("completedAt" in activation, false);
+});
+
+test("expanded rosters simulate only the configured Starting Five", () => {
+  const expand = (source, prefix) => ({ ...source, roster: [...source.roster, ...[0, 1, 2].map((index) => ({ id: `${prefix}-bench-${index}`, name: `${prefix} Bench ${index}`, position: index === 0 ? "PG" : index === 1 ? "SF" : "C", overall: 80 }))] });
+  const homeTeam = expand(team("home", "H", 82), "H");
+  const awayTeam = expand(team("away", "A", 80), "A");
+  const activation = buildOfficialGameActivation({ game: { ...identity, id: identity.gameId, status: "scheduled" }, homeTeam, awayTeam, startedAt: 1_000, endsAt: 61_000, rosterSize: 8 });
+  assert.equal(activation.boxScore.home.players.length, 5);
+  assert.equal(activation.boxScore.away.players.length, 5);
+  assert.equal(activation.boxScore.home.players.some((player) => player.playerId.includes("bench")), false);
+});
+
+test("activation retry cannot regenerate an already in-progress game", () => {
+  assert.throws(() => buildOfficialGameActivation({
+    game: { ...identity, id: identity.gameId, status: "in_progress" },
+    homeTeam: team("home", "H", 82),
+    awayTeam: team("away", "A", 80),
+    startedAt: 1_000,
+    endsAt: 61_000,
+  }), /Only a scheduled official game can be activated/);
+});
+
+test("playoff round start uses the same scheduled-to-in-progress activation", () => {
+  const activation = buildOfficialGameActivation({
+    game: { ...identity, id: "semifinal-1", gameId: "semifinal-1", status: "scheduled", stage: "semifinal" },
+    homeTeam: team("home", "H", 82),
+    awayTeam: team("away", "A", 80),
+    startedAt: 5_000,
+    endsAt: 65_000,
+  });
+  assert.equal(activation.status, "in_progress");
+  assert.equal(activation.timeline.at(-1).eventType, "game_end");
+  assert.equal("completedAt" in activation, false);
+});
+
+test("completion still rejects a genuinely scheduled game", () => {
+  const homeTeam = team("home", "H", 82);
+  const awayTeam = team("away", "A", 80);
+  const simulation = simulateOfficialGame({ gameIdentity: identity, homeTeam, awayTeam });
+  assert.throws(() => buildOfficialCompletion({ game: { ...identity, status: "scheduled" }, homeTeam, awayTeam, simulation }), /Only an in-progress official game can be completed/);
 });
 
 test("only league-scoped official paths are record eligible", () => {

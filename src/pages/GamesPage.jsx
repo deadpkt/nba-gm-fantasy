@@ -1,4 +1,4 @@
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import OfficialGamePresentation from "../components/OfficialGamePresentation";
 import PageLayout from "../components/PageLayout";
@@ -6,20 +6,22 @@ import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import { db } from "../lib/firebase";
-import { getPresentationFrame } from "../lib/officialGamePresentation";
+import { getPresentationFrame, isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
 import {
-  completeOfficialGame,
+  finalizeOfficialGamePresentation,
   getOfficialParticipantSide,
   OFFICIAL_GAME_STATUS,
   startRegularSeasonRound,
 } from "../lib/officialGames";
-import { ROUND_STATUS } from "../lib/seasonProgress";
+import { isRoundProgressionComplete, ROUND_STATUS } from "../lib/seasonProgress";
+import { normalizeRosterConfig } from "../lib/rosterConfig";
 import { getMissingLineupPositions, isLineupComplete } from "../utils/team";
 
 function GamesPage() {
   const { user } = useAuth();
   const { activeLeagueId, activeLeague } = useLeague();
   const { roster, lineup, record } = useLeagueTeam();
+  const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
   const [scheduleGames, setScheduleGames] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState("");
@@ -44,11 +46,15 @@ function GamesPage() {
   const canStartRound =
     isCommissioner &&
     !progress.regularSeasonComplete &&
-    [ROUND_STATUS.PENDING, ROUND_STATUS.COMPLETED].includes(progress.roundStatus);
+    (progress.roundStatus === ROUND_STATUS.PENDING ||
+      (progress.roundStatus === ROUND_STATUS.COMPLETED && isRoundProgressionComplete(currentRoundGames)));
   const nextRound = progress.roundStatus === ROUND_STATUS.COMPLETED
     ? progress.currentRound + 1
     : progress.currentRound;
   const rounds = useMemo(() => summarizeRounds(scheduleGames), [scheduleGames]);
+  const presentationClockActive = scheduleGames.some(
+    (game) => game.timeline?.length && !isOfficialGameFinalVisible(game, presentationNow),
+  );
 
   async function run(actionName, action) {
     setGameActionError("");
@@ -68,20 +74,16 @@ function GamesPage() {
       return;
     }
     setOpenGameId(game.id);
-    if (game.status === OFFICIAL_GAME_STATUS.IN_PROGRESS && !game.timeline?.length) {
-      void run(`game-${game.id}`, () =>
-        completeOfficialGame({ leagueId: activeLeagueId, gameId: game.id }),
-      );
-    }
   }
 
   useEffect(() => {
+    if (!presentationClockActive) return undefined;
     const interval = window.setInterval(() => setPresentationNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [presentationClockActive]);
 
   useEffect(() => {
-    if (!activeLeagueId) {
+    if (!activeLeagueId || !activeLeague?.season) {
       setScheduleGames([]);
       setScheduleLoading(false);
       return undefined;
@@ -90,9 +92,9 @@ function GamesPage() {
     setScheduleError("");
     setScheduleLoading(true);
     return onSnapshot(
-      query(collection(db, "leagues", activeLeagueId, "games"), orderBy("scheduledOrder")),
+      query(collection(db, "leagues", activeLeagueId, "games"), where("season", "==", activeLeague.season)),
       (snapshot) => {
-        setScheduleGames(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setScheduleGames(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })).sort((a, b) => (a.scheduledOrder ?? 0) - (b.scheduledOrder ?? 0)));
         setScheduleLoading(false);
       },
       (error) => {
@@ -101,7 +103,7 @@ function GamesPage() {
         setScheduleLoading(false);
       },
     );
-  }, [activeLeagueId]);
+  }, [activeLeague?.season, activeLeagueId]);
 
   return (
     <PageLayout>
@@ -114,7 +116,7 @@ function GamesPage() {
         {gameActionError && <p className="official-game-error" role="alert">{gameActionError}</p>}
         {isCommissioner && (
           <div className="round-control-panel broadcast-control">
-            <div><span>COMMISSIONER CONTROL</span><b>{progress.regularSeasonComplete ? "REGULAR SEASON COMPLETE" : progress.roundStatus === ROUND_STATUS.ACTIVE ? `ROUND ${progress.currentRound} LIVE` : progress.roundStatus === ROUND_STATUS.COMPLETED ? `ROUND ${progress.currentRound} COMPLETE` : `ROUND ${progress.currentRound} AVAILABLE`}</b></div>
+            <div><span>COMMISSIONER CONTROL</span><b>{progress.regularSeasonComplete ? "REGULAR SEASON COMPLETE" : progress.roundStatus === ROUND_STATUS.ACTIVE ? `ROUND ${progress.currentRound} IN PROGRESS — WAITING FOR LIVE GAMES TO FINISH` : progress.roundStatus === ROUND_STATUS.COMPLETED && !isRoundProgressionComplete(currentRoundGames) ? `ROUND ${progress.currentRound} — WAITING FOR LIVE GAMES TO FINISH` : progress.roundStatus === ROUND_STATUS.COMPLETED ? `ROUND ${progress.currentRound} COMPLETE` : `ROUND ${progress.currentRound} AVAILABLE`}</b></div>
             {canStartRound && nextRound <= progress.totalRounds && (
               <button className="button-primary" type="button" disabled={Boolean(busyAction)} onClick={() => run("round", () => startRegularSeasonRound({ leagueId: activeLeagueId }))}>
                 {busyAction === "round" ? "Starting..." : progress.roundStatus === ROUND_STATUS.COMPLETED ? `Start Next Round (${nextRound})` : `Start Round ${nextRound}`}
@@ -127,7 +129,7 @@ function GamesPage() {
             <span>OFFICIAL GAME / ROUND {openGame.round}</span>
             <h3>{openGame.awayTeamName} at {openGame.homeTeamName}</h3>
             <p>Status: {openGamePresenting ? "LIVE PRESENTATION" : openGame.status.replaceAll("_", " ").toUpperCase()}</p>
-            <OfficialGamePresentation game={openGame} renderFinal={() => <OfficialBoxScore game={openGame} />} />
+            <OfficialGamePresentation game={openGame} onPresentationComplete={() => finalizeOfficialGamePresentation({ leagueId: activeLeagueId, gameId: openGame.id })} renderFinal={() => <OfficialBoxScore game={openGame} />} />
           </div>
         )}
         {scheduleLoading ? <p>Loading official schedule...</p> : scheduleError ? <p role="alert">{scheduleError}</p> : (
@@ -156,7 +158,7 @@ function GamesPage() {
                 <details open={round.round === progress.currentRound} key={round.round}>
                   <summary><b>Round {round.round}</b><span>{round.label}</span></summary>
                   {round.games.map((game) => (
-                    <div key={game.id}><span>#{game.gameNumber}</span><b>{game.awayTeamName} at {game.homeTeamName}</b><small>{game.status === OFFICIAL_GAME_STATUS.COMPLETED ? `${game.result?.awayScore}–${game.result?.homeScore} FINAL` : game.status.replaceAll("_", " ").toUpperCase()}</small></div>
+                    <div key={game.id}><span>#{game.gameNumber}</span><b>{game.awayTeamName} at {game.homeTeamName}</b><small>{isOfficialGameFinalVisible(game, presentationNow) ? `${game.result?.awayScore}–${game.result?.homeScore} FINAL` : game.timeline?.length ? "LIVE" : game.status.replaceAll("_", " ").toUpperCase()}</small></div>
                   ))}
                 </details>
               ))}
@@ -164,7 +166,7 @@ function GamesPage() {
           </>
         )}
       </section>
-      <section className="game-status"><div><span>SEASON RECORD</span><b>{record.wins}-{record.losses}</b></div><div><span>ROSTER</span><b>{roster.length}/5 PLAYERS</b></div><div><span>LINEUP STATUS</span><b>{lineupReady ? "READY FOR TIP-OFF" : `MISSING: ${missingPositions.join(", ")}`}</b></div></section>
+      <section className="game-status"><div><span>SEASON RECORD</span><b>{record.wins}-{record.losses}</b></div><div><span>ROSTER</span><b>{roster.length}/{rosterSize} PLAYERS</b></div><div><span>LINEUP STATUS</span><b>{lineupReady ? "READY FOR TIP-OFF" : `MISSING: ${missingPositions.join(", ")}`}</b></div></section>
     </PageLayout>
   );
 }
@@ -196,8 +198,8 @@ function summarizeRounds(games) {
 }
 
 function gameStatusLabel(game, now) {
-  if (game.status !== OFFICIAL_GAME_STATUS.COMPLETED) return game.status.replaceAll("_", " ").toUpperCase();
-  return game.timeline?.length && !getPresentationFrame(game, now).finished ? "LIVE" : "FINAL";
+  if (game.timeline?.length && !isOfficialGameFinalVisible(game, now)) return "LIVE";
+  return isOfficialGameFinalVisible(game, now) ? "FINAL" : game.status.replaceAll("_", " ").toUpperCase();
 }
 
 function OfficialBoxScore({ game }) {

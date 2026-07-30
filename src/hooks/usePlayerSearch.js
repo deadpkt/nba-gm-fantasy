@@ -7,7 +7,7 @@ export default function usePlayerSearch(players, search, position = "ALL") {
     () =>
       players.map((player) => ({
         player,
-        searchText: [player.name, player.team, player.position]
+        searchText: [player.name, player.fullName, player.team, player.position, ...(player.eligiblePositions || [])]
           .join(" ")
           .toLocaleLowerCase(),
       })),
@@ -20,7 +20,7 @@ export default function usePlayerSearch(players, search, position = "ALL") {
       indexedPlayers
         .filter(
           ({ player, searchText }) =>
-            (position === "ALL" || player.position === position) &&
+            (position === "ALL" || (player.eligiblePositions || [player.position]).includes(position)) &&
             (!normalizedSearch || searchText.includes(normalizedSearch)),
         )
         .map(({ player }) => player),

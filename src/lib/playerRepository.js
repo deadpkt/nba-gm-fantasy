@@ -1,6 +1,7 @@
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
-import fallbackPlayers from "../data/players";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
+import { dedupeCatalogPlayers, isCanonicalCatalogPlayer, RUNTIME_PLAYER_CATALOG_SOURCE } from "./playerCatalog";
+import { resolvePlayerHeadshot } from "./playerHeadshots";
 
 const catalogRef = () => doc(db, "playerCatalogs", "current");
 
@@ -37,10 +38,24 @@ export function validateCatalogPlayer(player, documentId) {
     return invalid("invalid-stats");
   }
   if (!Number.isFinite(player.overall)) return invalid("invalid-overall");
-  if (typeof player.image !== "string" || !player.image.trim())
-    return invalid("missing-image");
+  if (typeof player.primaryPosition !== "string" || !player.primaryPosition)
+    return invalid("missing-primary-position");
+  if (!Array.isArray(player.eligiblePositions) || !player.eligiblePositions.length)
+    return invalid("missing-eligible-positions");
+  const imageUrl = resolvePlayerHeadshot(player);
+  return { valid: true, player: { ...player, imageUrl, image: imageUrl } };
+}
 
-  return { valid: true, player };
+export async function loadCatalogPlayerById(playerId) {
+  if (playerId === undefined || playerId === null || playerId === "") return null;
+  if (!firebaseEnabled || !db) return null;
+  const playerDocument = await getDoc(
+    doc(db, "playerCatalogs", "current", "players", String(playerId)),
+  );
+  if (!playerDocument.exists()) return null;
+  const { catalogOrder: _catalogOrder, ...player } = playerDocument.data();
+  const validation = validateCatalogPlayer(player, playerDocument.id);
+  return validation.valid ? validation.player : null;
 }
 
 function validatePlayers(entries) {
@@ -91,39 +106,35 @@ async function loadFirestorePlayerCatalog() {
   }
 
   const playersSnapshot = await getDocs(
-    collection(db, "playerCatalogs", "current", "players"),
+    query(
+      collection(db, "playerCatalogs", "current", "players"),
+      where("active", "==", true),
+      where("draftEligible", "==", true),
+    ),
   );
   if (playersSnapshot.empty) {
-    return { players: [], diagnostics: emptyDiagnostics() };
+    return { players: [], diagnostics: emptyDiagnostics(), metadata: currentCatalog.data() };
   }
 
-  return validatePlayers(
+  const validated = validatePlayers(
     playersSnapshot.docs.map((playerDocument, index) => {
       const { catalogOrder, ...player } = playerDocument.data();
       return { player, documentId: playerDocument.id, catalogOrder, index };
     }),
   );
+  return { ...validated, players: dedupeCatalogPlayers(validated.players.filter(isCanonicalCatalogPlayer)), metadata: currentCatalog.data() };
 }
 
-function fallbackResult(error, firestoreDiagnostics = emptyDiagnostics()) {
-  const fallback = validatePlayers(
-    fallbackPlayers.map((player, index) => ({
-      player,
-      documentId: String(player.id),
-      catalogOrder: index,
-      index,
-    })),
-  );
-
+function unavailableResult(error, firestoreDiagnostics = emptyDiagnostics()) {
   return {
-    players: fallback.players,
-    source: "fallback",
-    fallbackUsed: true,
-    empty: fallback.players.length === 0,
+    players: [],
+    source: RUNTIME_PLAYER_CATALOG_SOURCE,
+    fallbackUsed: false,
+    empty: true,
     error,
     diagnostics: {
       firestore: firestoreDiagnostics,
-      fallback: fallback.diagnostics,
+      fallback: emptyDiagnostics(),
     },
   };
 }
@@ -144,10 +155,11 @@ export async function loadPlayerCatalog() {
           firestore: firestore.diagnostics,
           fallback: emptyDiagnostics(),
         },
+        metadata: firestore.metadata,
       };
     }
 
-    return fallbackResult(
+    return unavailableResult(
       catalogError(
         "catalog-empty",
         "The Firestore player catalog has no valid players.",
@@ -155,6 +167,6 @@ export async function loadPlayerCatalog() {
       firestore.diagnostics,
     );
   } catch (error) {
-    return fallbackResult(error);
+    return unavailableResult(error);
   }
 }

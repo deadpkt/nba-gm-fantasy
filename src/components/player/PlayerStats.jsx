@@ -17,23 +17,34 @@ function PlayerStats({ player }) {
   return (
     <section className="player-details__section">
       <div className="player-details__section-head">
-        <span>SEASON PRODUCTION</span>
-        <b>Player statistics</b>
+        <span>NBA DATA</span>
+        <b>
+          {source.available === false
+            ? "Premium statistics unavailable"
+            : `Season ${source.season || "production"}`}
+        </b>
       </div>
-      <div className="player-stats">
-        {stats.map(([label, key]) => (
-          <div key={key}>
-            <span>{label}</span>
-            <b>
-              {label.includes("%")
-                ? display(source[key])
-                : Number.isFinite(source[key])
-                  ? source[key].toFixed(1)
-                  : "—"}
-            </b>
-          </div>
-        ))}
-      </div>
+      {source.available === false ? (
+        <p className="player-stats__unavailable">
+          Directory identity is synchronized. NBA statistics are unavailable
+          from the configured provider tier and have not been fabricated.
+        </p>
+      ) : (
+        <div className="player-stats">
+          {stats.map(([label, key]) => (
+            <div key={key}>
+              <span>{label}</span>
+              <b>
+                {label.includes("%")
+                  ? display(source[key])
+                  : Number.isFinite(source[key])
+                    ? source[key].toFixed(1)
+                    : "—"}
+              </b>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

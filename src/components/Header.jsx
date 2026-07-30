@@ -32,22 +32,19 @@ function getNavigationGroups(activeLeagueId, status) {
       {
         label: "Franchise",
         icon: "◈",
-        items: [{ to: "/my-team", label: "My Team", icon: "◈", team: true }],
+        items: [{ to: "/my-team", label: "My Team", icon: "◈", team: true }, { to: "/contracts", label: "Contracts", icon: "$" }],
       },
       { label: "League", icon: "◇", items: [leagueItem] },
     ];
   }
 
-  const tradeAvailable = status === LEAGUE_STATUS.REGULAR_SEASON;
   return [
     {
       label: "Franchise",
       icon: "◈",
       items: [
         { to: "/my-team", label: "My Team", icon: "◈", team: true },
-        ...(tradeAvailable
-          ? [{ to: "/trade-center", label: "Trade Center", icon: "⇄" }]
-          : []),
+        { to: "/contracts", label: "Contracts", icon: "$" },
       ],
     },
     {
@@ -55,8 +52,14 @@ function getNavigationGroups(activeLeagueId, status) {
       icon: "◇",
       items: [
         leagueItem,
-        ...(status === LEAGUE_STATUS.REGULAR_SEASON
+        ...([LEAGUE_STATUS.REGULAR_SEASON, LEAGUE_STATUS.PLAYOFFS].includes(status)
           ? [{ to: "/standings", label: "Standings", icon: "#" }]
+          : []),
+        ...(status === LEAGUE_STATUS.PLAYOFFS
+          ? [{ to: "/playoffs", label: "Playoffs", icon: "P" }]
+          : []),
+        ...([LEAGUE_STATUS.PLAYOFFS, LEAGUE_STATUS.OFFSEASON].includes(status)
+          ? [{ to: "/league/history", label: "Season History", icon: "H" }]
           : []),
       ],
     },
@@ -110,10 +113,7 @@ function Header() {
     navigableLeagueId,
     activeLeague?.status,
   );
-  const gamesAvailable = [
-    LEAGUE_STATUS.REGULAR_SEASON,
-    LEAGUE_STATUS.PLAYOFFS,
-  ].includes(activeLeague?.status);
+  const gamesAvailable = activeLeague?.status === LEAGUE_STATUS.REGULAR_SEASON;
   const notificationsAvailable = false;
 
   return (

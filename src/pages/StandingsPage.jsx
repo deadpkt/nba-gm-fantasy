@@ -1,10 +1,10 @@
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import PageLayout from "../components/PageLayout";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import { db } from "../lib/firebase";
-import { finalizeRegularSeason } from "../lib/officialGames";
+import { finalizeRegularSeason, initializePlayoffs } from "../lib/officialGames";
 import { calculateStandings, findRecordMismatches } from "../lib/standings";
 import "../standings.css";
 
@@ -17,6 +17,8 @@ function StandingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [finalizationRequested, setFinalizationRequested] = useState(false);
+  const [playoffBusy, setPlayoffBusy] = useState(false);
+  const [playoffError, setPlayoffError] = useState("");
   const standings = useMemo(
     () => calculateStandings(teams, games, activeLeague?.season),
     [activeLeague?.season, games, teams],
@@ -35,7 +37,7 @@ function StandingsPage() {
     : standings;
 
   useEffect(() => {
-    if (!activeLeagueId) {
+    if (!activeLeagueId || !activeLeague?.season) {
       setGames([]);
       setLoading(false);
       return undefined;
@@ -43,9 +45,9 @@ function StandingsPage() {
     setLoading(true);
     setError("");
     return onSnapshot(
-      query(collection(db, "leagues", activeLeagueId, "games"), orderBy("scheduledOrder")),
+      query(collection(db, "leagues", activeLeagueId, "games"), where("season", "==", activeLeague.season)),
       (snapshot) => {
-        setGames(snapshot.docs.map((game) => ({ id: game.id, ...game.data() })));
+        setGames(snapshot.docs.map((game) => ({ id: game.id, ...game.data() })).sort((a, b) => (a.scheduledOrder ?? 0) - (b.scheduledOrder ?? 0)));
         setLoading(false);
       },
       () => {
@@ -53,7 +55,7 @@ function StandingsPage() {
         setLoading(false);
       },
     );
-  }, [activeLeagueId]);
+  }, [activeLeague?.season, activeLeagueId]);
 
   useEffect(() => {
     setFinalizationRequested(false);
@@ -103,7 +105,14 @@ function StandingsPage() {
           <section className="playoff-field">
             <div><span>POSTSEASON FIELD</span><b>{qualifiers.length} QUALIFIERS</b></div>
             <ol>{qualifiers.map((team) => <li key={team.uid}><strong>#{team.seed}</strong><b>{team.teamName}</b><small>QUALIFIED</small></li>)}</ol>
-            <p>Seeds are final. Playoff bracket generation is not implemented yet.</p>
+            <p>Seeds are final and ready for trusted playoff bracket initialization.</p>
+            {activeLeague?.postseason?.status === "ready" && activeLeague.commissionerUid === user.uid && (
+              <button className="button-primary" type="button" disabled={playoffBusy} onClick={async () => {
+                setPlayoffBusy(true); setPlayoffError("");
+                try { await initializePlayoffs({ leagueId: activeLeagueId }); } catch (nextError) { setPlayoffError(nextError.message); } finally { setPlayoffBusy(false); }
+              }}>{playoffBusy ? "Initializing..." : "Initialize Playoffs"}</button>
+            )}
+            {playoffError && <p role="alert">{playoffError}</p>}
           </section>
         )}
         <footer>Ranking: WIN% · Wins · Point Differential · Points For · Team Name</footer>

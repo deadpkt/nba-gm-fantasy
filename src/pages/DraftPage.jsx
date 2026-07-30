@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import PlayerCard from "../components/PlayerCard";
+import PlayerImage from "../components/player/PlayerImage";
 import useAuth from "../hooks/useAuth";
 import useDraft from "../hooks/useDraft";
 import useLeague from "../hooks/useLeague";
@@ -9,10 +10,14 @@ import useLeagueTeam from "../hooks/useLeagueTeam";
 import usePlayers from "../hooks/usePlayers";
 import usePlayerSearch from "../hooks/usePlayerSearch";
 import { DRAFT_STATUS } from "../lib/draft";
+import { DraftProvider } from "../context/DraftContext";
+import { PlayersProvider } from "../context/PlayersContext";
+import { normalizeRosterConfig } from "../lib/rosterConfig";
 
 const positions = ["ALL", "PG", "SG", "SF", "PF", "C"];
+const DRAFT_PAGE_SIZE = 48;
 
-function DraftPage() {
+function DraftPageContent() {
   const { user } = useAuth();
   const { activeLeagueId, activeLeague, members } = useLeague();
   const { roster } = useLeagueTeam();
@@ -31,6 +36,8 @@ function DraftPage() {
   const [sortBy, setSortBy] = useState("overall");
   const [busyPlayerId, setBusyPlayerId] = useState(null);
   const [pickError, setPickError] = useState("");
+  const [visibleCount, setVisibleCount] = useState(DRAFT_PAGE_SIZE);
+  const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
   const searchedPlayers = usePlayerSearch(players, search, position);
   const availablePlayers = useMemo(
     () =>
@@ -44,16 +51,19 @@ function DraftPage() {
         ),
     [draftedPlayerIds, searchedPlayers, sortBy],
   );
-  const memberById = new Map(
+  const memberById = useMemo(() => new Map(
     members.map((member) => [member.uid || member.id, member]),
-  );
+  ), [members]);
   const isYourPick =
     draft?.status === DRAFT_STATUS.ACTIVE &&
     draft.currentDrafterUid === user.uid;
   const currentDrafter = memberById.get(draft?.currentDrafterUid);
   const firestoreCatalogReady = catalogSource === "firestore";
+  const visiblePlayers = availablePlayers.slice(0, visibleCount);
 
-  async function selectPlayer(player) {
+  useEffect(() => setVisibleCount(DRAFT_PAGE_SIZE), [position, search, sortBy]);
+
+  const selectPlayer = useCallback(async (player) => {
     setPickError("");
     setBusyPlayerId(player.id);
     try {
@@ -63,7 +73,7 @@ function DraftPage() {
     } finally {
       setBusyPlayerId(null);
     }
-  }
+  }, [makePick]);
 
   if (draftLoading) {
     return <PageLayout><div className="route-loader">Joining the shared draft room...</div></PageLayout>;
@@ -137,24 +147,25 @@ function DraftPage() {
               <div className="player-database__empty">Loading draft pool...</div>
             ) : availablePlayers.length ? (
               <div className="draft-player-grid">
-                {availablePlayers.map((player) => (
+                {visiblePlayers.map((player) => (
                   <PlayerCard
                     key={player.id}
                     player={player}
                     onAction={selectPlayer}
-                    disabled={!isYourPick || !firestoreCatalogReady || roster.length >= 5 || busyPlayerId !== null}
+                    disabled={!isYourPick || !firestoreCatalogReady || roster.length >= rosterSize || busyPlayerId !== null}
                     actionLabel={busyPlayerId === player.id ? "Drafting..." : isYourPick ? "Draft player" : "Waiting for pick"}
                   />
                 ))}
               </div>
             ) : <div className="player-database__empty">No available players match this search.</div>}
+            {visibleCount < availablePlayers.length && <button className="draft-load-more button-secondary" type="button" onClick={() => setVisibleCount((count) => count + DRAFT_PAGE_SIZE)}>Load More Players ({availablePlayers.length - visibleCount} remaining)</button>}
           </main>
 
           <aside className="draft-selected">
-            <header><span>YOUR ROSTER</span><b>Drafted unit</b><i>{roster.length}/5</i></header>
+            <header><span>YOUR ROSTER</span><b>Drafted unit</b><i>{roster.length}/{rosterSize}</i></header>
             {roster.length ? roster.map((player, index) => (
               <div className="draft-selected__player" style={{ "--draft-player": player.color || "#e32842" }} key={player.id}>
-                <strong>{String(index + 1).padStart(2, "0")}</strong><img src={player.image} alt="" />
+                <strong>{String(index + 1).padStart(2, "0")}</strong><PlayerImage player={player} alt="" />
                 <span><small>{player.position} · {player.team}</small><b>{player.name}</b></span><em>{player.overall}</em>
               </div>
             )) : <div className="draft-selected__empty"><b>No selections yet.</b><p>Your drafted players will appear here.</p></div>}
@@ -163,6 +174,10 @@ function DraftPage() {
       </div>
     </PageLayout>
   );
+}
+
+function DraftPage() {
+  return <PlayersProvider><DraftProvider><DraftPageContent /></DraftProvider></PlayersProvider>;
 }
 
 export default DraftPage;

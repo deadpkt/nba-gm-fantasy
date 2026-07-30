@@ -1,5 +1,6 @@
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { firebaseEnabled, storage } from "./firebase";
+import { firebaseEnabled } from "./firebase";
+import { storage } from "./firebaseStorage";
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -18,7 +19,7 @@ async function uploadUserImage(userId, file, type) {
   console.debug("[ProfileSettings] Image upload started", {
     type,
     path: imageRef.fullPath,
-    name: file.name,
+    name: file.name || `${type}-crop.jpg`,
     size: file.size,
     contentType: file.type,
   });

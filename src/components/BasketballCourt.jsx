@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LINEUP_POSITIONS } from "../utils/team";
+import { findRosterPlayer, getAssignableLineupPlayers, LINEUP_POSITIONS } from "../utils/team";
 import { openPlayerDetails } from "./player/PlayerDetailsModal";
 
 const formattedStat = (value) =>
@@ -68,7 +68,7 @@ function BasketballCourt({ team, lineup, onAssign }) {
             aria-hidden="true"
           />
           {LINEUP_POSITIONS.map((position) => {
-            const player = team.find((item) => item.id === lineup[position]);
+            const player = findRosterPlayer(team, lineup[position]);
             const isFocused = focusedPlayerId === player?.id;
             const playerColor = player?.color || teamColor;
 
@@ -153,7 +153,7 @@ function BasketballCourt({ team, lineup, onAssign }) {
             <b>SELECT A STARTER</b>
           </div>
           {LINEUP_POSITIONS.map((position) => {
-            const player = team.find((item) => item.id === lineup[position]);
+            const player = findRosterPlayer(team, lineup[position]);
             return (
               <label
                 className="lineup-control"
@@ -175,18 +175,12 @@ function BasketballCourt({ team, lineup, onAssign }) {
                   onChange={(event) =>
                     onAssign(
                       position,
-                      event.target.value ? Number(event.target.value) : null,
+                      event.target.value || null,
                     )
                   }
                 >
                   <option value="">Unassigned</option>
-                  {team
-                    .filter(
-                      (item) =>
-                        !Object.entries(lineup).some(
-                          ([slot, id]) => slot !== position && id === item.id,
-                        ),
-                    )
+                  {getAssignableLineupPlayers(team, lineup, position)
                     .map((item) => (
                       <option value={item.id} key={item.id}>
                         {item.name} ({item.overall})
