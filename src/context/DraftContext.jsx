@@ -7,6 +7,8 @@ import {
   draftStateRef,
   initializeLeagueDraft,
   makeDraftPick,
+  resolveExpiredDraftPick,
+  syncTrustedDraftClock,
 } from "../lib/draft";
 import { db } from "../lib/firebase";
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
@@ -21,6 +23,7 @@ export function DraftProvider({ children }) {
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState(null);
   const [ownedPlayerIds, setOwnedPlayerIds] = useState(new Set());
+  const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
   const leagueStatus = activeLeague?.status;
   const commissionerUid = activeLeague?.commissionerUid;
 
@@ -96,6 +99,15 @@ export function DraftProvider({ children }) {
     };
   }, [activeLeagueId, commissionerUid, firebaseEnabled, leagueStatus, user]);
 
+  useEffect(() => {
+    if (!activeLeagueId || leagueStatus !== LEAGUE_STATUS.DRAFTING || !user) return undefined;
+    let active = true;
+    void syncTrustedDraftClock({ leagueId: activeLeagueId }).then(({ offsetMs }) => {
+      if (active) setServerTimeOffsetMs(offsetMs);
+    }).catch(setDraftError);
+    return () => { active = false; };
+  }, [activeLeagueId, leagueStatus, user]);
+
   const value = useMemo(
     () => ({
       draft,
@@ -106,10 +118,13 @@ export function DraftProvider({ children }) {
       ]),
       draftLoading,
       draftError,
+      serverTimeOffsetMs,
       makePick: async (playerId) =>
         makeDraftPick({ leagueId: activeLeagueId, userId: user.uid, playerId }),
+      resolveExpiredPick: async (expectedTurn) =>
+        resolveExpiredDraftPick({ leagueId: activeLeagueId, expectedTurn }),
     }),
-    [activeLeagueId, draft, draftError, draftLoading, ownedPlayerIds, picks, user],
+    [activeLeagueId, draft, draftError, draftLoading, ownedPlayerIds, picks, serverTimeOffsetMs, user],
   );
 
   return <DraftContext.Provider value={value}>{children}</DraftContext.Provider>;

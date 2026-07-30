@@ -1,4 +1,7 @@
-function FreeAgentCard({ player, onView }) {
+import PlayerImage from "../player/PlayerImage";
+import { formatMoney } from "../../lib/contracts";
+
+function FreeAgentCard({ player, projectedContract, onView, onSign, signing, disabledReason }) {
   return (
     <article
       className="free-agent-card"
@@ -11,26 +14,20 @@ function FreeAgentCard({ player, onView }) {
           <small>OVR</small>
         </b>
       </div>
-      {player.image ? (
-        <img src={player.image} alt={player.name} />
-      ) : (
-        <div className="free-agent-card__portrait" aria-hidden="true">
-          {player.position}
-        </div>
-      )}
+      <PlayerImage player={player} className="free-agent-card__portrait" />
       <div className="free-agent-card__identity">
         <small>
           {player.position} · {player.team || "FREE AGENT"}
         </small>
         <h3>{player.name}</h3>
-        <span>AVAILABLE</span>
+        <span>{formatMoney(projectedContract.salary)} / {projectedContract.yearsRemaining} YEARS</span>
       </div>
       <div className="free-agent-card__actions">
         <button type="button" onClick={() => onView(player)}>
           View player
         </button>
-        <button type="button" disabled title="Watchlists are not available yet">
-          Add to Watchlist
+        <button type="button" disabled={Boolean(signing || disabledReason)} title={disabledReason || "Sign this player"} onClick={() => onSign(player)}>
+          {signing ? "Signing..." : disabledReason || "Sign"}
         </button>
       </div>
     </article>

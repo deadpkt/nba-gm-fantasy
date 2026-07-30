@@ -27,6 +27,7 @@ export function getLeagueNextAction({
   roundStatus = "pending",
   regularSeasonComplete = false,
   playoffGames = [],
+  offseasonRequirements = null,
 } = {}) {
   if (!league) {
     return {
@@ -80,7 +81,10 @@ export function getLeagueNextAction({
 
   if (phase === LEAGUE_STATUS.OFFSEASON) {
     const nextSeason = league.offseason?.nextSeason || league.season + 1;
-    if (!teamReady) return { ...base, ...action(`Prepare for Season ${nextSeason}`, "Review your carried roster and confirm the next-season lineup.", "Go to My Team", "/my-team") };
+    if (offseasonRequirements && !offseasonRequirements.rosterValid) return { ...base, ...action(`Complete your Season ${nextSeason} roster`, "Use Free Agency to fill every configured roster spot.", "Go to Free Agency", "/free-agency") };
+    if (offseasonRequirements && !offseasonRequirements.lineupValid) return { ...base, ...action(`Set your Season ${nextSeason} lineup`, "Assign a valid Starting Five after your roster moves.", "Go to My Team", "/my-team") };
+    if (offseasonRequirements && !offseasonRequirements.capValid) return { ...base, ...action("Review your salary cap", "Your franchise contracts must be valid and cap compliant.", "View Contracts", "/contracts") };
+    if (!teamReady) return { ...base, ...action(`Confirm for Season ${nextSeason}`, "Your roster, lineup, and contracts are ready. Confirm your franchise preparation.", "Go to My Team", "/my-team") };
     if (isCommissioner && allTeamsReady) return { ...base, ...action(`Start Season ${nextSeason}`, "Every franchise has confirmed its next-season roster.", `Start Season ${nextSeason}`, `${dashboardPath}#league-controls`) };
     return { ...base, ...action(`Preparing for Season ${nextSeason}`, `${readyCount} of ${totalMembers} franchises are ready.`, "View Offseason", dashboardPath, "secondary", allTeamsReady ? "Waiting for the commissioner to start the next season." : `${Math.max(0, totalMembers - readyCount)} franchise${totalMembers - readyCount === 1 ? "" : "s"} remaining.`) };
   }

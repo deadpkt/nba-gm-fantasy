@@ -26,3 +26,11 @@ test("regular-season participant is guided to a live matchup", () => {
 test("progress is deterministic for every lifecycle phase", () => {
   assert.deepEqual(getLeagueProgress("season_ready").map((step) => step.state), ["complete", "complete", "active", "upcoming", "upcoming", "upcoming"]);
 });
+
+test("offseason guidance sends incomplete rosters to trusted Free Agency first", () => {
+  const offseasonLeague = { ...league, status: "offseason", offseason: { nextSeason: 2 } };
+  const roster = getLeagueNextAction({ league: offseasonLeague, userId: "member", offseasonRequirements: { rosterValid: false, lineupValid: false, capValid: true } });
+  const lineup = getLeagueNextAction({ league: offseasonLeague, userId: "member", offseasonRequirements: { rosterValid: true, lineupValid: false, capValid: true } });
+  assert.equal(roster.actionPath, "/free-agency");
+  assert.equal(lineup.actionPath, "/my-team");
+});

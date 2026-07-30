@@ -3,15 +3,18 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import BasketballCourt from "../components/BasketballCourt";
 import PageLayout from "../components/PageLayout";
 import PlayerCard from "../components/PlayerCard";
+import PreseasonRosterRepair from "../components/PreseasonRosterRepair";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import useLeagueContracts from "../hooks/useLeagueContracts";
 import { formatMoney, getContractStatus } from "../lib/contracts";
+import { releaseFreeAgent } from "../lib/freeAgency";
 import { isLeagueTeamSeasonReady } from "../lib/leagueTeams";
 import { getOffseasonTeamPreparationState, normalizeOffseasonPreparation } from "../lib/offseasonPreparation";
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
+import { canBuildLegalStartingFive } from "../lib/lineupFeasibility";
 import {
   getChemistry,
   getLineupOverall,
@@ -31,12 +34,14 @@ function MyTeamPage() {
     confirmSeasonLineup,
     confirmOffseasonLineup,
   } = useLeagueTeam();
-  const { activeLeague, startSeason } = useLeague();
+  const { activeLeague, activeLeagueId, startSeason } = useLeague();
   const { teamContracts, contractsInitialized, payroll, capSpace, salaryCap, validation } = useLeagueContracts();
   const location = useLocation();
   const navigate = useNavigate();
   const [setupBusy, setSetupBusy] = useState("");
   const [setupError, setSetupError] = useState("");
+  const [releaseCandidate, setReleaseCandidate] = useState(null);
+  const [repairOpen, setRepairOpen] = useState(false);
   const lineupReady = isLeagueTeamSeasonReady({ roster, lineup }, activeLeague);
   const rosterConfig = normalizeRosterConfig(activeLeague);
   const starterIds = new Set(Object.values(lineup || {}).filter(Boolean).map(normalizePlayerId));
@@ -58,6 +63,8 @@ function MyTeamPage() {
   const allTeamsReady = totalTeams > 0 && readyCount === totalTeams;
   const isCommissioner = activeLeague?.commissionerUid === user.uid;
   const offseasonState = getOffseasonTeamPreparationState({ league: activeLeague, team: { ownerUid: user.uid, roster, lineup }, userId: user.uid, contracts: teamContracts });
+  const rosterFeasibility = canBuildLegalStartingFive(roster);
+  const preseasonRepairRequired = seasonSetup && activeLeague?.season === 1 && !activeLeague?.seasonStartedAt && roster.length === rosterConfig.rosterSize && !rosterFeasibility.valid;
 
   function save(action) {
     void action().catch((error) =>
@@ -78,6 +85,11 @@ function MyTeamPage() {
     }
   }
 
+  async function confirmRelease() {
+    if (!releaseCandidate) return;
+    await runSetup("release", () => releaseFreeAgent({ leagueId: activeLeagueId, playerId: releaseCandidate.id }), () => setReleaseCandidate(null));
+  }
+
   return (
     <PageLayout>
       <section className="page-hero team-setup-hero">
@@ -88,6 +100,7 @@ function MyTeamPage() {
         <p>{offseasonSetup ? `Your dynasty roster carries forward. Review and explicitly confirm the lineup for Season ${preparation.nextSeason}.` : seasonSetup ? `Build and confirm the unit that will represent your franchise in Season ${activeLeague.season}.` : `Manage your ${rosterConfig.rosterSize}-player roster and five-player starting lineup.`}</p>
       </section>
       {accessMessage && <p className="league-access-message" role="status">{accessMessage}</p>}
+      {preseasonRepairRequired && <section className="roster-correction-panel"><div><p className="section-label">ROSTER NEEDS CORRECTION</p><h2>Your roster cannot build a legal Starting Five.</h2><p>Missing requirement: <b>{rosterFeasibility.uncoveredPositions.join(", ")}</b></p></div><button className="button-primary" type="button" onClick={() => setRepairOpen(true)}>Fix Roster</button></section>}
       {(seasonSetup || offseasonSetup) && (
         <section className={`season-setup-panel ${confirmed ? "is-confirmed" : lineupReady ? "is-complete" : "is-incomplete"}`}>
           <div className="season-ready-meter" aria-label={`${readyCount} of ${totalTeams} franchises ready`}>
@@ -209,7 +222,7 @@ function MyTeamPage() {
             {roster.map((player) => {
               const contract = teamContracts.find((item) => String(item.playerId) === String(player.id));
               const status = getContractStatus(contract);
-              return <div className="roster-contract-card" key={player.id}><PlayerCard player={player} /><div><b>{formatMoney(contract?.salary)} / YEAR</b><span className={`contract-status contract-status--${status?.toLowerCase() || "missing"}`}>{status ? status.replace("_", "-") : "NOT INITIALIZED"}</span><small>{contract ? `${contract.yearsRemaining} year${contract.yearsRemaining === 1 ? "" : "s"} remaining` : "Open Contracts to initialize"}</small></div></div>;
+              return <div className="roster-contract-card" key={player.id}><PlayerCard player={player} /><div><b>{formatMoney(contract?.salary)} / YEAR</b><span className={`contract-status contract-status--${status?.toLowerCase() || "missing"}`}>{status ? status.replace("_", "-") : "NOT INITIALIZED"}</span><small>{contract ? `${contract.yearsRemaining} year${contract.yearsRemaining === 1 ? "" : "s"} remaining` : "Open Contracts to initialize"}</small>{offseasonSetup && contract && <button className="button-secondary roster-release-button" type="button" disabled={Boolean(setupBusy)} onClick={() => setReleaseCandidate(player)}>Release</button>}</div></div>;
             })}
           </div>
         ) : (
@@ -221,6 +234,8 @@ function MyTeamPage() {
           </div>
         )}
       </section>
+      {releaseCandidate && <div className="player-details-backdrop" role="presentation"><section className="release-confirmation" role="dialog" aria-modal="true" aria-labelledby="release-title"><p className="section-label">ROSTER TRANSACTION</p><h2 id="release-title">Release Player?</h2><p><b>{releaseCandidate.name}</b> will become a free agent and their contract will be terminated immediately.</p><div><button className="button-secondary" type="button" disabled={setupBusy === "release"} onClick={() => setReleaseCandidate(null)}>Cancel</button><button className="button-primary" type="button" disabled={setupBusy === "release"} onClick={confirmRelease}>{setupBusy === "release" ? "Releasing..." : "Release Player"}</button></div></section></div>}
+      {repairOpen && <PreseasonRosterRepair roster={roster} onClose={() => setRepairOpen(false)} />}
     </PageLayout>
   );
 }

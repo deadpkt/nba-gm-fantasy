@@ -52,6 +52,7 @@ function FreeAgentFilters({ filters, onChange }) {
           }
         >
           <option value="overall">Overall rating</option>
+          <option value="salary">Projected salary</option>
           <option value="name">Player name</option>
           <option value="position">Position</option>
         </select>

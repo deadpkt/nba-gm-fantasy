@@ -39,7 +39,7 @@ const TEAM_PHASES = [
 const GAME_PHASES = [LEAGUE_STATUS.REGULAR_SEASON];
 const TRADE_PHASES = [LEAGUE_STATUS.REGULAR_SEASON];
 const CONTRACT_PHASES = [LEAGUE_STATUS.SEASON_READY, LEAGUE_STATUS.REGULAR_SEASON, LEAGUE_STATUS.PLAYOFFS, LEAGUE_STATUS.OFFSEASON];
-const FUTURE_OFFSEASON_FEATURE_PHASES = [];
+const FREE_AGENCY_PHASES = [LEAGUE_STATUS.OFFSEASON];
 const FUTURE_SEASON_FEATURE_PHASES = [];
 function App() {
   return (
@@ -50,7 +50,7 @@ function App() {
       <Route path="/my-team" element={leaguePhasePage(<MyTeamPage />, TEAM_PHASES)} />
       <Route path="/activity" element={leaguePhasePage(<ActivityPage />, FUTURE_SEASON_FEATURE_PHASES)} />
       <Route path="/achievements" element={leaguePhasePage(<AchievementsPage />, FUTURE_SEASON_FEATURE_PHASES)} />
-      <Route path="/free-agency" element={leaguePhasePage(<FreeAgencyPage />, FUTURE_OFFSEASON_FEATURE_PHASES)} />
+      <Route path="/free-agency" element={leaguePhasePage(<FreeAgencyPage />, FREE_AGENCY_PHASES)} />
       <Route path="/contracts" element={leaguePhasePage(<ContractsPage />, CONTRACT_PHASES)} />
       <Route path="/notifications" element={leaguePhasePage(<NotificationsPage />, FUTURE_SEASON_FEATURE_PHASES)} />
       <Route path="/awards" element={leaguePhasePage(<AwardsPage />, FUTURE_SEASON_FEATURE_PHASES)} />

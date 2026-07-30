@@ -61,6 +61,7 @@ export default function useLeagueGuidance() {
       roundStatus: progress.roundStatus || "pending",
       regularSeasonComplete: progress.regularSeasonComplete === true,
       playoffGames: games.filter((game) => ["semifinal", "final"].includes(game.stage)),
+      offseasonRequirements: offseason ? getOffseasonTeamPreparationState({ league: activeLeague, team: leagueTeam, userId: user?.uid, contracts }).requirements : null,
     });
   }, [activeLeague, contracts, games, leagueTeam, members, offseasonConfirmed, seasonConfirmed, teams, user?.uid]);
 }

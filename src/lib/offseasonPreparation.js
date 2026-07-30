@@ -2,6 +2,7 @@ import { LEAGUE_STATUS } from "./leagueStatuses.js";
 import { getLineupValidation } from "../utils/team.js";
 import { validateTeamContracts } from "../../functions/shared/contracts.js";
 import { normalizeRosterConfig } from "./rosterConfig.js";
+import { canBuildLegalStartingFive } from "./lineupFeasibility.js";
 
 function hasValidFivePlayerLineup(team = {}) {
   const roster = Array.isArray(team.roster) ? team.roster : [];
@@ -21,13 +22,14 @@ export function normalizeOffseasonPreparation(league = {}) {
 
 export function getOffseasonTeamPreparationState({ league, team, userId, contracts = [] }) {
   const preparation = normalizeOffseasonPreparation(league);
-  const rosterValid = Array.isArray(team?.roster) && team.roster.length === normalizeRosterConfig(league).rosterSize;
+  const rosterFeasible = canBuildLegalStartingFive(team?.roster).valid;
+  const rosterValid = Array.isArray(team?.roster) && team.roster.length === normalizeRosterConfig(league).rosterSize && rosterFeasible;
   const lineupValid = hasValidFivePlayerLineup(team);
   const ownerConfirmed = preparation.readyMemberIds.includes(userId);
   const contractsInitialized = league?.contractVersion === 1;
   const contractValidation = contractsInitialized ? validateTeamContracts(team, contracts, league) : null;
   const capValid = contractsInitialized ? contractValidation.valid : true;
-  return { nextSeason: preparation.nextSeason, requirements: { rosterValid, lineupValid, contractsInitialized, capValid, ownerConfirmed }, payroll: contractValidation?.payroll || 0, ready: rosterValid && lineupValid && capValid && ownerConfirmed };
+  return { nextSeason: preparation.nextSeason, requirements: { rosterValid, rosterFeasible, lineupValid, contractsInitialized, capValid, ownerConfirmed }, payroll: contractValidation?.payroll || 0, ready: rosterValid && lineupValid && capValid && ownerConfirmed };
 }
 
 export function buildOffseasonReadyMemberIds({ league, actorUid, targetUid, confirmed, team }) {

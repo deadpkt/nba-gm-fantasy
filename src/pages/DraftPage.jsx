@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import PlayerCard from "../components/PlayerCard";
@@ -13,6 +13,8 @@ import { DRAFT_STATUS } from "../lib/draft";
 import { DraftProvider } from "../context/DraftContext";
 import { PlayersProvider } from "../context/PlayersContext";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
+import { getDraftRosterFeasibility } from "../lib/lineupFeasibility";
+import { draftTurnIdentity, formatDraftClock, getDraftRemainingSeconds } from "../lib/draftTimer";
 
 const positions = ["ALL", "PG", "SG", "SF", "PF", "C"];
 const DRAFT_PAGE_SIZE = 48;
@@ -21,8 +23,10 @@ function DraftPageContent() {
   const { user } = useAuth();
   const { activeLeagueId, activeLeague, members } = useLeague();
   const { roster } = useLeagueTeam();
-  const { draft, picks, draftedPlayerIds, draftLoading, draftError, makePick } =
-    useDraft();
+  const {
+    draft, picks, draftedPlayerIds, draftLoading, draftError, makePick,
+    resolveExpiredPick, serverTimeOffsetMs,
+  } = useDraft();
   const {
     players,
     playersLoading,
@@ -37,6 +41,9 @@ function DraftPageContent() {
   const [busyPlayerId, setBusyPlayerId] = useState(null);
   const [pickError, setPickError] = useState("");
   const [visibleCount, setVisibleCount] = useState(DRAFT_PAGE_SIZE);
+  const [clockNowMs, setClockNowMs] = useState(Date.now());
+  const [autoResolving, setAutoResolving] = useState(false);
+  const resolvingTurnRef = useRef("");
   const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
   const searchedPlayers = usePlayerSearch(players, search, position);
   const availablePlayers = useMemo(
@@ -56,12 +63,39 @@ function DraftPageContent() {
   ), [members]);
   const isYourPick =
     draft?.status === DRAFT_STATUS.ACTIVE &&
-    draft.currentDrafterUid === user.uid;
+    draft.currentDrafterUid === user?.uid;
   const currentDrafter = memberById.get(draft?.currentDrafterUid);
   const firestoreCatalogReady = catalogSource === "firestore";
   const visiblePlayers = availablePlayers.slice(0, visibleCount);
+  const rosterFeasibility = getDraftRosterFeasibility(roster, rosterSize);
+  const turnIdentity = useMemo(() => draftTurnIdentity(draft), [draft]);
+  const turnKey = `${turnIdentity.pickNumber || ""}:${turnIdentity.drafterUid || ""}:${turnIdentity.deadlineMs || ""}`;
+  const remainingSeconds = getDraftRemainingSeconds(draft?.pickDeadlineAt, serverTimeOffsetMs, clockNowMs);
+  const timerExpired = draft?.status === DRAFT_STATUS.ACTIVE && remainingSeconds === 0;
+  const timerLoading = draft?.status === DRAFT_STATUS.ACTIVE && !draft.pickDeadlineAt;
 
   useEffect(() => setVisibleCount(DRAFT_PAGE_SIZE), [position, search, sortBy]);
+
+  useEffect(() => {
+    if (draft?.status !== DRAFT_STATUS.ACTIVE || !draft.pickDeadlineAt) return undefined;
+    setClockNowMs(Date.now());
+    const intervalId = window.setInterval(() => setClockNowMs(Date.now()), 250);
+    return () => window.clearInterval(intervalId);
+  }, [draft?.pickDeadlineAt, draft?.status]);
+
+  useEffect(() => {
+    setAutoResolving(false);
+    resolvingTurnRef.current = "";
+  }, [turnKey]);
+
+  useEffect(() => {
+    if (!timerExpired || !turnIdentity.deadlineMs || resolvingTurnRef.current === turnKey) return;
+    resolvingTurnRef.current = turnKey;
+    setAutoResolving(true);
+    void resolveExpiredPick(turnIdentity)
+      .catch((error) => setPickError(error.message || "The expired pick is being resolved."))
+      .finally(() => setAutoResolving(false));
+  }, [resolveExpiredPick, timerExpired, turnIdentity, turnKey]);
 
   const selectPlayer = useCallback(async (player) => {
     setPickError("");
@@ -75,7 +109,7 @@ function DraftPageContent() {
     }
   }, [makePick]);
 
-  if (draftLoading) {
+  if (draftLoading || timerLoading) {
     return <PageLayout><div className="route-loader">Joining the shared draft room...</div></PageLayout>;
   }
 
@@ -105,6 +139,9 @@ function DraftPageContent() {
             <span>OVERALL PICK</span>
             <b>{draft.currentPickNumber}<i>RD {draft.currentRound}</i></b>
             <small>{currentDrafter?.displayName || draft.currentDrafterUid}</small>
+            <time className={`draft-pick-clock ${remainingSeconds !== null && remainingSeconds <= 10 ? "is-urgent" : ""}`} dateTime={`PT${remainingSeconds ?? 0}S`}>
+              {autoResolving || timerExpired ? "AUTO-PICKING" : formatDraftClock(remainingSeconds)}
+            </time>
             <div><i /><span>{isYourPick ? "YOUR PICK" : "WAITING FOR DRAFTER"}</span></div>
           </div>
         </section>
@@ -124,7 +161,7 @@ function DraftPageContent() {
               {picks.length ? picks.map((pick) => (
                 <div key={pick.id}>
                   <strong>#{pick.overallPick}</strong>
-                  <span><b>{pick.player.name}</b><small>{memberById.get(pick.ownerUid)?.displayName || pick.ownerUid} · RD {pick.round}</small></span>
+                  <span><b>{pick.player.name}</b><small>{memberById.get(pick.ownerUid)?.displayName || pick.ownerUid} · RD {pick.round}{pick.selectionType === "auto" ? " · AUTO" : ""}</small></span>
                 </div>
               )) : <p>No picks have been made.</p>}
             </section>
@@ -140,6 +177,7 @@ function DraftPageContent() {
               <div className="draft-position-filters">{positions.map((item) => <button type="button" key={item} className={position === item ? "is-active" : ""} onClick={() => setPosition(item)}>{item}</button>)}</div>
             </div>
             {fallbackUsed && <div className="player-database__empty">The local fallback is view-only. Draft picks require the published Firestore catalog.</div>}
+            <section className="draft-coverage"><header><span>STARTING FIVE COVERAGE</span><small>{rosterFeasibility.valid ? "LEGAL FIVE AVAILABLE" : `${rosterFeasibility.remainingSlots} ROSTER SLOTS REMAIN`}</small></header><div>{positions.slice(1).map((slot) => <span className={rosterFeasibility.assignment[slot] ? "is-covered" : "is-missing"} key={slot}><b>{slot}</b>{rosterFeasibility.assignment[slot] ? "Covered" : "Missing"}</span>)}</div>{!rosterFeasibility.valid && <p>You still need coverage for {rosterFeasibility.uncoveredPositions.join(", ")} to build a legal Starting Five.</p>}</section>
             {pickError && <div className="draft-pick-error" role="alert">{pickError}</div>}
             {catalogEmpty || playersError ? (
               <div className="player-database__empty">Player catalog is unavailable.</div>
@@ -147,15 +185,17 @@ function DraftPageContent() {
               <div className="player-database__empty">Loading draft pool...</div>
             ) : availablePlayers.length ? (
               <div className="draft-player-grid">
-                {visiblePlayers.map((player) => (
-                  <PlayerCard
+                {visiblePlayers.map((player) => {
+                  const candidateFeasibility = getDraftRosterFeasibility([...roster, player], rosterSize);
+                  const compositionBlocked = !candidateFeasibility.canStillBecomeValid;
+                  return <PlayerCard
                     key={player.id}
                     player={player}
                     onAction={selectPlayer}
-                    disabled={!isYourPick || !firestoreCatalogReady || roster.length >= rosterSize || busyPlayerId !== null}
-                    actionLabel={busyPlayerId === player.id ? "Drafting..." : isYourPick ? "Draft player" : "Waiting for pick"}
-                  />
-                ))}
+                    disabled={!isYourPick || timerExpired || !firestoreCatalogReady || roster.length >= rosterSize || busyPlayerId !== null || compositionBlocked}
+                    actionLabel={busyPlayerId === player.id ? "Drafting..." : timerExpired ? "Auto-picking..." : compositionBlocked ? `Needs ${candidateFeasibility.uncoveredPositions.join("/")}` : isYourPick ? "Draft player" : "Waiting for pick"}
+                  />;
+                })}
               </div>
             ) : <div className="player-database__empty">No available players match this search.</div>}
             {visibleCount < availablePlayers.length && <button className="draft-load-more button-secondary" type="button" onClick={() => setVisibleCount((count) => count + DRAFT_PAGE_SIZE)}>Load More Players ({availablePlayers.length - visibleCount} remaining)</button>}

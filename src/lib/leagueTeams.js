@@ -8,6 +8,7 @@ import { buildLineupAssignment, getLineupValidation, LINEUP_POSITIONS, normalize
 import { LEAGUE_STATUS } from "./leagueStatuses";
 import { buildOffseasonReadyMemberIds, normalizeOffseasonPreparation } from "./offseasonPreparation";
 import { normalizeRosterConfig } from "./rosterConfig";
+import { canBuildLegalStartingFive } from "./lineupFeasibility";
 
 export const DEFAULT_LEAGUE_STRATEGY = "balanced";
 
@@ -54,7 +55,7 @@ export function normalizeLeagueTeam(id, data = {}) {
 export function isLeagueTeamSeasonReady(teamData = {}, league = {}) {
   const roster = Array.isArray(teamData.roster) ? teamData.roster : [];
   const lineup = teamData.lineup || {};
-  return roster.length === normalizeRosterConfig(league).rosterSize && getLineupValidation(roster, lineup).valid;
+  return roster.length === normalizeRosterConfig(league).rosterSize && canBuildLegalStartingFive(roster).valid && getLineupValidation(roster, lineup).valid;
 }
 
 export function buildLeagueLineupAssignment(roster, lineup, position, playerId) {

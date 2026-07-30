@@ -45,6 +45,9 @@ function getNavigationGroups(activeLeagueId, status) {
       items: [
         { to: "/my-team", label: "My Team", icon: "◈", team: true },
         { to: "/contracts", label: "Contracts", icon: "$" },
+        ...(status === LEAGUE_STATUS.OFFSEASON
+          ? [{ to: "/free-agency", label: "Free Agency", icon: "+" }]
+          : []),
       ],
     },
     {

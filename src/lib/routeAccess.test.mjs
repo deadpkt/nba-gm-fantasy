@@ -20,6 +20,7 @@ test("valid authenticated league routes remain allowed after hydration", () => {
     [LEAGUE_STATUS.PLAYOFFS, [LEAGUE_STATUS.PLAYOFFS], "/playoffs"],
     [LEAGUE_STATUS.OFFSEASON, [LEAGUE_STATUS.SEASON_READY, LEAGUE_STATUS.REGULAR_SEASON, LEAGUE_STATUS.PLAYOFFS, LEAGUE_STATUS.OFFSEASON], "/contracts"],
     [LEAGUE_STATUS.OFFSEASON, [LEAGUE_STATUS.SEASON_READY, LEAGUE_STATUS.REGULAR_SEASON, LEAGUE_STATUS.PLAYOFFS, LEAGUE_STATUS.OFFSEASON], "/league/history"],
+    [LEAGUE_STATUS.OFFSEASON, [LEAGUE_STATUS.OFFSEASON], "/free-agency"],
   ];
   cases.forEach(([status, statuses, pathname]) => assert.equal(access(status, statuses, pathname).status, ROUTE_ACCESS.ALLOWED));
 });
@@ -28,6 +29,7 @@ test("lifecycle redirects occur only after resolved authoritative status", () =>
   assert.deepEqual(access(LEAGUE_STATUS.SEASON_READY, [LEAGUE_STATUS.DRAFTING], "/league/draft"), { status: ROUTE_ACCESS.REDIRECT, redirectTo: "/my-team", reason: "draft-completed" });
   assert.deepEqual(access(LEAGUE_STATUS.OFFSEASON, [LEAGUE_STATUS.REGULAR_SEASON], "/games"), { status: ROUTE_ACCESS.REDIRECT, redirectTo: "/league/league-1", reason: "invalid-phase" });
   assert.deepEqual(access(LEAGUE_STATUS.REGULAR_SEASON, [LEAGUE_STATUS.PLAYOFFS], "/playoffs"), { status: ROUTE_ACCESS.REDIRECT, redirectTo: "/league/league-1", reason: "invalid-phase" });
+  assert.deepEqual(access(LEAGUE_STATUS.REGULAR_SEASON, [LEAGUE_STATUS.OFFSEASON], "/free-agency"), { status: ROUTE_ACCESS.REDIRECT, redirectTo: "/league/league-1", reason: "invalid-phase" });
 });
 
 test("resolved missing league and membership remain protected", () => {
