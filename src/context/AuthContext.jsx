@@ -10,8 +10,9 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { auth, db, firebaseEnabled } from "../lib/firebase";
+import { reportClientError } from "../lib/clientErrors";
 
 export const AuthContext = createContext(null);
 
@@ -56,17 +57,34 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  function saveUserProfile(currentUser) {
-    return setDoc(
-      doc(db, "users", currentUser.uid),
-      {
+  async function saveUserProfile(currentUser) {
+    const privateRef = doc(db, "users", currentUser.uid);
+    const publicRef = doc(db, "publicProfiles", currentUser.uid);
+    const publicSnapshot = await getDoc(publicRef);
+    const now = serverTimestamp();
+    const batch = writeBatch(db);
+    batch.set(privateRef, {
         displayName: currentUser.displayName || "",
         email: currentUser.email || "",
         photoURL: currentUser.photoURL || "",
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+        updatedAt: now,
+      }, { merge: true });
+    batch.set(publicRef, publicSnapshot.exists() ? {
+      displayName: currentUser.displayName || "",
+      photoURL: currentUser.photoURL || "",
+      bannerURL: publicSnapshot.data().bannerURL || "",
+      updatedAt: now,
+    } : {
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || "Full Court Player",
+      photoURL: currentUser.photoURL || "",
+      bannerURL: "",
+      joinedAt: now,
+      followersCount: 0,
+      followingCount: 0,
+      updatedAt: now,
+    }, { merge: true });
+    await batch.commit();
   }
 
   async function signUp({ displayName, email, password }) {
@@ -76,9 +94,7 @@ export function AuthProvider({ children }) {
       password,
     );
     await updateProfile(credential.user, { displayName });
-    void saveUserProfile(credential.user).catch((error) =>
-      console.error("Could not save new user profile:", error),
-    );
+    void saveUserProfile(credential.user).catch((error) => reportClientError("Profile setup", error));
   }
 
   async function login({ email, password }) {
@@ -88,9 +104,7 @@ export function AuthProvider({ children }) {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     const credential = await signInWithPopup(auth, provider);
-    void saveUserProfile(credential.user).catch((error) =>
-      console.error("Could not sync Google profile:", error),
-    );
+    void saveUserProfile(credential.user).catch((error) => reportClientError("Profile sync", error));
   }
   async function logout() {
     await signOut(auth);

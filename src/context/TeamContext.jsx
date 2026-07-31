@@ -2,6 +2,7 @@ import { createContext, useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import useAuth from "../hooks/useAuth";
 import { db } from "../lib/firebase";
+import { reportClientError } from "../lib/clientErrors";
 
 export const TeamContext = createContext(null);
 
@@ -39,7 +40,7 @@ export function TeamProvider({ children }) {
         setProfileLoading(false);
       },
       (error) => {
-        console.error("Could not load user profile:", error);
+        reportClientError("Profile", error);
         setProfile(profileFrom(user));
         setActiveLeagueId(null);
         setProfileError(error);

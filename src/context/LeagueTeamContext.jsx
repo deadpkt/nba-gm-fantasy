@@ -9,6 +9,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import { db } from "../lib/firebase";
+import { reportClientError } from "../lib/clientErrors";
 import {
   addLeagueTeamPlayer,
   assignLeagueTeamPlayer,
@@ -45,12 +46,6 @@ export function LeagueTeamProvider({ children }) {
     setLeagueTeamError(null);
     setLeagueTeamLoading(true);
 
-    console.debug("[LeagueTeamContext] Starting team listener", {
-      authUid: user.uid,
-      activeLeagueId,
-      teamPath: `leagues/${activeLeagueId}/teams/${user.uid}`,
-    });
-
     return onSnapshot(
       doc(db, "leagues", activeLeagueId, "teams", user.uid),
       (snapshot) => {
@@ -62,7 +57,7 @@ export function LeagueTeamProvider({ children }) {
         setLeagueTeamLoading(false);
       },
       (error) => {
-        console.error("Could not load league franchise:", error);
+        reportClientError("Franchise", error);
         setLeagueTeam(null);
         setLeagueTeamError(error);
         setLeagueTeamLoading(false);

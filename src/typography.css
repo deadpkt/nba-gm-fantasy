@@ -1,0 +1,164 @@
+/* Shared type hierarchy. No remote font request is required for either stack. */
+body,
+button,
+input,
+select,
+textarea,
+nav,
+nav a,
+nav button {
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.page-title,
+.settings-hero h1,
+.player-card__rating,
+.official-live__scoreboard b,
+.official-live__scoreboard strong,
+.social-stats b {
+  font-family: var(--font-display);
+}
+
+h1 {
+  font-size: var(--type-h1);
+  line-height: .92;
+  letter-spacing: -.025em;
+}
+
+h2 {
+  font-size: var(--type-h2);
+  line-height: 1;
+  letter-spacing: -.015em;
+}
+
+h3 {
+  font-size: var(--type-h3);
+  line-height: 1.08;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+.settings-hero h1 {
+  font-size: clamp(2.35rem, 5vw, 3.65rem);
+  letter-spacing: -.025em;
+}
+
+p,
+li,
+dd {
+  line-height: 1.55;
+}
+
+small,
+label,
+dt,
+.section-label {
+  font-family: var(--font-body) !important;
+  letter-spacing: .055em;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-body) !important;
+}
+
+.dashboard-nav a,
+.dashboard-nav button,
+.dashboard-nav .dashboard-nav__flyout-link {
+  font-family: var(--font-body) !important;
+  letter-spacing: .035em;
+}
+
+/* Compact profile connection control shared by own and public profiles. */
+.social-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(292px, calc(100% - 36px));
+  min-width: 0;
+  max-width: none;
+  margin: -10px 18px 18px auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #3b5d7d;
+  border-radius: 4px;
+  background: #09192c;
+  box-shadow: 0 12px 26px #00000042, inset 0 1px #ffffff0a;
+}
+
+.social-stats button {
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: start;
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 15px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  transition: background .16s ease, color .16s ease;
+}
+
+.social-stats button + button {
+  border-left: 1px solid #365674;
+}
+
+.social-stats button:hover {
+  background: #132b44;
+}
+
+.social-stats button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #f4c646;
+  outline-offset: -2px;
+}
+
+.social-stats b {
+  min-width: 0;
+  color: #f9fbff;
+  font-size: 27px;
+  font-weight: 800;
+  line-height: .9;
+  font-variant-numeric: tabular-nums;
+}
+
+.social-stats span {
+  margin-top: 6px;
+  color: #91a7bf;
+  text-transform: none;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: .035em;
+}
+
+@media (max-width: 560px) {
+  .social-stats {
+    width: 100%;
+    margin: 10px 0 16px;
+  }
+
+  .social-stats button {
+    min-height: 56px;
+    padding: 10px 13px;
+  }
+
+  .social-stats b {
+    font-size: 25px;
+  }
+}

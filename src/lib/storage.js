@@ -11,25 +11,13 @@ function validateImage(file) {
 }
 
 async function uploadUserImage(userId, file, type) {
-  if (!firebaseEnabled || !storage) throw new Error("Firebase Storage is not configured.");
+  if (!firebaseEnabled || !storage) throw new Error("Profile image uploads are currently unavailable.");
   if (!userId) throw new Error("You must be signed in to upload an image.");
   validateImage(file);
 
   const imageRef = ref(storage, `users/${userId}/${type}/image`);
-  console.debug("[ProfileSettings] Image upload started", {
-    type,
-    path: imageRef.fullPath,
-    name: file.name || `${type}-crop.jpg`,
-    size: file.size,
-    contentType: file.type,
-  });
   await uploadBytes(imageRef, file, { contentType: file.type });
   const downloadURL = await getDownloadURL(imageRef);
-  console.debug("[ProfileSettings] Image upload completed", {
-    type,
-    path: imageRef.fullPath,
-    downloadURL,
-  });
   return downloadURL;
 }
 

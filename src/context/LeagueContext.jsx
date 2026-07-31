@@ -9,6 +9,7 @@ import {
 import useAuth from "../hooks/useAuth";
 import useTeam from "../hooks/useTeam";
 import { db } from "../lib/firebase";
+import { reportClientError } from "../lib/clientErrors";
 import {
   cancelLeague,
   createLeague,
@@ -53,13 +54,6 @@ export function LeagueProvider({ children }) {
     setTeams([]);
     setLeagueError(null);
 
-    console.debug("[LeagueContext] Starting league listeners", {
-      authUid: user.uid,
-      activeLeagueId,
-      leaguePath: `leagues/${activeLeagueId}`,
-      membersPath: `leagues/${activeLeagueId}/members`,
-    });
-
     const unsubscribeLeague = onSnapshot(
       doc(db, "leagues", activeLeagueId),
       (snapshot) => {
@@ -69,7 +63,7 @@ export function LeagueProvider({ children }) {
         setResolvedLeagueId(activeLeagueId);
       },
       (error) => {
-        console.error("Could not load active league:", error);
+        reportClientError("League", error);
         setActiveLeague(null);
         setResolvedLeagueId(activeLeagueId);
         setLeagueError(error);
@@ -86,7 +80,7 @@ export function LeagueProvider({ children }) {
         );
       },
       (error) => {
-        console.error("Could not load league members:", error);
+        reportClientError("League members", error);
         setLeagueError(error);
       },
     );
@@ -98,7 +92,7 @@ export function LeagueProvider({ children }) {
         );
       },
       (error) => {
-        console.error("Could not load league teams:", error);
+        reportClientError("League teams", error);
         setLeagueError(error);
       },
     );

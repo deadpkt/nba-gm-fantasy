@@ -8,6 +8,7 @@ import { db } from "../lib/firebase";
 import { isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
 import { finalizeOfficialGamePresentation, getOfficialParticipantSide, startPlayoffRound } from "../lib/officialGames";
 import { enterOffseason } from "../lib/seasonHistory";
+import { getUserFriendlyError } from "../lib/clientErrors";
 import "../playoffs.css";
 
 function PlayoffsPage() {
@@ -42,7 +43,7 @@ function PlayoffsPage() {
 
   async function run(name, action) {
     setBusy(name); setError("");
-    try { await action(); } catch (nextError) { setError(nextError.message); } finally { setBusy(""); }
+    try { await action(); } catch (nextError) { setError(getUserFriendlyError(nextError, "The playoff action could not be completed.")); } finally { setBusy(""); }
   }
 
   function open(game) {

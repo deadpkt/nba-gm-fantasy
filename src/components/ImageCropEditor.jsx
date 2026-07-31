@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCroppedImage } from "../lib/imageCrop";
-
-const OUTPUTS = {
-  avatar: { width: 512, height: 512, label: "Profile picture" },
-  banner: { width: 1600, height: 500, label: "Profile banner" },
-};
+import { PROFILE_CROP_OUTPUTS } from "../lib/profileMedia";
+import { getUserFriendlyError } from "../lib/clientErrors";
 
 function clamp(value) { return Math.max(-1, Math.min(1, value)); }
 
 function ImageCropEditor({ file, type, onCancel, onConfirm }) {
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
-  const config = OUTPUTS[type];
+  const config = PROFILE_CROP_OUTPUTS[type];
   const source = useMemo(() => URL.createObjectURL(file), [file]);
   const [dimensions, setDimensions] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -69,7 +66,7 @@ function ImageCropEditor({ file, type, onCancel, onConfirm }) {
       const cropped = await createCroppedImage(file, { ...config, zoom, position, quality: type === "avatar" ? 0.92 : 0.9 });
       onConfirm(cropped);
     } catch (nextError) {
-      setError(nextError.message);
+      setError(getUserFriendlyError(nextError, "Could not prepare that image."));
       setSaving(false);
     }
   }

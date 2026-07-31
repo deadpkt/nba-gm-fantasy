@@ -9,6 +9,7 @@ import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import { db } from "../lib/firebase";
 import { createTradeOffer } from "../lib/trades";
+import { getUserFriendlyError } from "../lib/clientErrors";
 
 function TradeCenterPage() {
   const { user } = useAuth();
@@ -59,7 +60,7 @@ function TradeCenterPage() {
       setTheirOffer([]);
       setSuccess(`Trade offer ${tradeId.slice(0, 8).toUpperCase()} was sent.`);
     } catch (nextError) {
-      setError(nextError.message || "Could not create this trade offer.");
+      setError(getUserFriendlyError(nextError, "Could not create this trade offer."));
     } finally {
       setBusy(false);
     }

@@ -3,9 +3,9 @@ import useLeague from "../hooks/useLeague";
 import useLeagueGuidance from "../hooks/useLeagueGuidance";
 import { getLeagueProgress } from "../lib/leagueGuidance";
 
-function LeagueProgress({ compact = false }) {
+function LeagueProgress({ compact = false, contracts }) {
   const { activeLeague } = useLeague();
-  const guidance = useLeagueGuidance();
+  const guidance = useLeagueGuidance({ contracts });
   const steps = getLeagueProgress(activeLeague?.status);
 
   return (

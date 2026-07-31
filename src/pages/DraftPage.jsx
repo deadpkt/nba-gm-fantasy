@@ -14,6 +14,7 @@ import { DraftProvider } from "../context/DraftContext";
 import { PlayersProvider } from "../context/PlayersContext";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
 import { getDraftRosterFeasibility } from "../lib/lineupFeasibility";
+import { getUserFriendlyError } from "../lib/clientErrors";
 import { draftTurnIdentity, formatDraftClock, getDraftRemainingSeconds } from "../lib/draftTimer";
 
 const positions = ["ALL", "PG", "SG", "SF", "PF", "C"];
@@ -93,7 +94,7 @@ function DraftPageContent() {
     resolvingTurnRef.current = turnKey;
     setAutoResolving(true);
     void resolveExpiredPick(turnIdentity)
-      .catch((error) => setPickError(error.message || "The expired pick is being resolved."))
+      .catch((error) => setPickError(getUserFriendlyError(error, "The expired pick is being resolved.")))
       .finally(() => setAutoResolving(false));
   }, [resolveExpiredPick, timerExpired, turnIdentity, turnKey]);
 
@@ -103,7 +104,7 @@ function DraftPageContent() {
     try {
       await makePick(player.id);
     } catch (error) {
-      setPickError(error.message || "The draft pick could not be completed.");
+      setPickError(getUserFriendlyError(error, "The draft pick could not be completed."));
     } finally {
       setBusyPlayerId(null);
     }
@@ -176,7 +177,7 @@ function DraftPageContent() {
               <label className="draft-search"><span>⌕</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search player or team" /></label>
               <div className="draft-position-filters">{positions.map((item) => <button type="button" key={item} className={position === item ? "is-active" : ""} onClick={() => setPosition(item)}>{item}</button>)}</div>
             </div>
-            {fallbackUsed && <div className="player-database__empty">The local fallback is view-only. Draft picks require the published Firestore catalog.</div>}
+            {fallbackUsed && <div className="player-database__empty">The player list is currently unavailable for draft picks.</div>}
             <section className="draft-coverage"><header><span>STARTING FIVE COVERAGE</span><small>{rosterFeasibility.valid ? "LEGAL FIVE AVAILABLE" : `${rosterFeasibility.remainingSlots} ROSTER SLOTS REMAIN`}</small></header><div>{positions.slice(1).map((slot) => <span className={rosterFeasibility.assignment[slot] ? "is-covered" : "is-missing"} key={slot}><b>{slot}</b>{rosterFeasibility.assignment[slot] ? "Covered" : "Missing"}</span>)}</div>{!rosterFeasibility.valid && <p>You still need coverage for {rosterFeasibility.uncoveredPositions.join(", ")} to build a legal Starting Five.</p>}</section>
             {pickError && <div className="draft-pick-error" role="alert">{pickError}</div>}
             {catalogEmpty || playersError ? (

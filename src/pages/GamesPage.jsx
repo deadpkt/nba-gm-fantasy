@@ -6,6 +6,7 @@ import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import { db } from "../lib/firebase";
+import { getUserFriendlyError, reportClientError } from "../lib/clientErrors";
 import { getPresentationFrame, isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
 import {
   finalizeOfficialGamePresentation,
@@ -62,7 +63,7 @@ function GamesPage() {
     try {
       await action();
     } catch (error) {
-      setGameActionError(error.message || "The official game could not be updated.");
+      setGameActionError(getUserFriendlyError(error, "The official game could not be updated."));
     } finally {
       setBusyAction("");
     }
@@ -98,7 +99,7 @@ function GamesPage() {
         setScheduleLoading(false);
       },
       (error) => {
-        console.error("Could not load official league schedule:", error);
+        reportClientError("Schedule", error);
         setScheduleError("The official schedule is currently unavailable.");
         setScheduleLoading(false);
       },

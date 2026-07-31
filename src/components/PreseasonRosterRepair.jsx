@@ -5,6 +5,7 @@ import useLeague from "../hooks/useLeague";
 import usePlayers from "../hooks/usePlayers";
 import { canBuildLegalStartingFive } from "../lib/lineupFeasibility";
 import { repairPreseasonRoster } from "../lib/preseasonRosterRepair";
+import { getUserFriendlyError } from "../lib/clientErrors";
 import PlayerCard from "./PlayerCard";
 
 function RepairContent({ roster, onClose }) {
@@ -29,7 +30,7 @@ function RepairContent({ roster, onClose }) {
       await repairPreseasonRoster({ leagueId: activeLeagueId, dropPlayerId, addPlayerId: player.id });
       onClose();
     } catch (actionError) {
-      setError(actionError.message || "The roster could not be repaired.");
+      setError(getUserFriendlyError(actionError, "The roster could not be repaired."));
     } finally {
       setBusyPlayerId(null);
     }

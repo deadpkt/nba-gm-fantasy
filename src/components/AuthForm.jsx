@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import { getInternalReturnPath } from "../lib/routeAccess";
+import { getUserFriendlyError } from "../lib/clientErrors";
 
 function AuthForm({ mode }) {
   const isSignUp = mode === "signup";
@@ -44,7 +45,7 @@ function AuthForm({ mode }) {
       if (isSignUp) await signUp(form);
       else await login(form);
     } catch (authError) {
-      setError(authError.message.replace("Firebase: ", ""));
+      setError(getUserFriendlyError(authError, "Could not sign in. Check your details and try again."));
     } finally {
       setSubmitting(false);
     }
@@ -56,7 +57,7 @@ function AuthForm({ mode }) {
     try {
       await signInWithGoogle();
     } catch (authError) {
-      setError(authError.message.replace("Firebase: ", ""));
+      setError(getUserFriendlyError(authError, "Could not sign in. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -65,16 +66,15 @@ function AuthForm({ mode }) {
   if (!firebaseEnabled)
     return (
       <section className="auth-card setup-card">
-        <p className="section-label">FIREBASE SETUP REQUIRED</p>
-        <h1>Add your Firebase keys.</h1>
+        <p className="section-label">SERVICE UNAVAILABLE</p>
+        <h1>Sign-in is temporarily unavailable.</h1>
         <p>
-          Copy <code>.env.example</code> to <code>.env.local</code>, add your
-          Firebase web app configuration, then restart the development server.
+          Please try again later.
         </p>
       </section>
     );
 
-  const message = error || authError?.message.replace("Firebase: ", "");
+  const message = error || (authError ? getUserFriendlyError(authError, "Could not sign in. Please try again.") : "");
   return (
     <section className="auth-card">
       <p className="section-label">

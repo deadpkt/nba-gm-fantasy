@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { loadPlayerCatalog } from "../lib/playerRepository";
+import { reportClientError } from "../lib/clientErrors";
 
 export const PlayersContext = createContext(null);
 
@@ -45,7 +46,7 @@ export function PlayersProvider({ children }) {
         setPlayersError(catalog.empty ? catalog.error : null);
       } catch (error) {
         if (active) {
-          console.error("Could not load player catalog:", error);
+          reportClientError("Players", error);
           setPlayers([]);
           setPlayersError(error);
           setCatalogSource(null);

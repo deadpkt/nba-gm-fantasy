@@ -44,7 +44,7 @@ function OfficialGamePresentation({ game, renderFinal, onPresentationComplete })
   );
 
   if (!game.timeline?.length) {
-    return game.status === "completed" ? renderFinal() : <p>Generating the authoritative game timeline...</p>;
+    return game.status === "completed" ? renderFinal() : <p>Preparing game...</p>;
   }
   return (
     <div className="official-live">

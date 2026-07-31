@@ -13,6 +13,7 @@ import { formatMoney, getInitialSalary, INITIAL_CONTRACT_YEARS } from "../lib/co
 import { signFreeAgent } from "../lib/freeAgency";
 import { filterUnownedPlayers } from "../lib/freeAgencyPool";
 import { getRosterCapacity } from "../lib/rosterConfig";
+import { getUserFriendlyError } from "../lib/clientErrors";
 
 const PAGE_SIZE = 48;
 
@@ -47,7 +48,7 @@ function FreeAgencyContent() {
     setSigningPlayerId(player.id);
     setActionError("");
     try { await signFreeAgent({ leagueId: activeLeagueId, playerId: player.id }); }
-    catch (error) { setActionError(error.message || "Player could not be signed."); }
+    catch (error) { setActionError(getUserFriendlyError(error, "Player could not be signed.")); }
     finally { setSigningPlayerId(null); }
   }
 

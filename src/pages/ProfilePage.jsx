@@ -1,70 +1,61 @@
 import { useEffect, useRef, useState } from "react";
 import { updateProfile } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import PageLayout from "../components/PageLayout";
+import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import ImageCropEditor from "../components/ImageCropEditor";
-import { openPlayerDetails } from "../components/player/PlayerDetailsModal";
+import PageLayout from "../components/PageLayout";
+import ProfileIdentityHero, { ProfileHeroSkeleton } from "../components/profile/ProfileIdentityHero";
+import SocialListModal from "../components/profile/SocialListModal";
 import useAuth from "../hooks/useAuth";
-import useLeague from "../hooks/useLeague";
-import useLeagueTeam from "../hooks/useLeagueTeam";
+import usePublicProfile from "../hooks/usePublicProfile";
 import useTeam from "../hooks/useTeam";
 import { db } from "../lib/firebase";
+import { publicProfileRef } from "../lib/publicProfiles";
+import { hasPendingProfileChanges } from "../lib/profileMedia";
 import { uploadBannerImage, uploadProfileImage } from "../lib/storage";
-import { normalizeRosterConfig } from "../lib/rosterConfig";
-import { getChemistry, getLineupOverall } from "../utils/team";
+import { getUserFriendlyError } from "../lib/clientErrors";
 
 function useImagePreview(file, savedUrl) {
   const [preview, setPreview] = useState(savedUrl || "");
-
   useEffect(() => {
-    if (!file) {
-      setPreview(savedUrl || "");
-      return undefined;
-    }
+    if (!file) { setPreview(savedUrl || ""); return undefined; }
     const objectUrl = URL.createObjectURL(file);
     setPreview(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file, savedUrl]);
-
   return preview;
 }
 
 function ProfilePage() {
   const { user } = useAuth();
-  const { profile } = useTeam();
-  const { activeLeague } = useLeague();
-  const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
-  const { leagueTeam, roster, lineup, record } = useLeagueTeam();
-  const profileInputRef = useRef(null);
-  const bannerInputRef = useRef(null);
-  const [displayName, setDisplayName] = useState(user.displayName || "");
+  const { profile: privateProfile } = useTeam();
+  const { profile: publicProfile, loading } = usePublicProfile(user.uid);
+  const [displayName, setDisplayName] = useState(privateProfile.displayName || user.displayName || "");
   const [profileImage, setProfileImage] = useState(null);
   const [bannerImage, setBannerImage] = useState(null);
   const [cropRequest, setCropRequest] = useState(null);
+  const [openSocialList, setOpenSocialList] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [saveMessage, setSaveMessage] = useState("");
-  const photoURL = profile.photoURL || user.photoURL || "";
-  const bannerURL = profile.bannerURL || "";
-  const profilePreview = useImagePreview(profileImage, photoURL);
-  const bannerPreview = useImagePreview(bannerImage, bannerURL);
-  const resolvedDisplayName = displayName.trim() || "Full Court Player";
-  const initial = (resolvedDisplayName || user.email || "F").slice(0, 1).toUpperCase();
-  const overall = getLineupOverall(roster, lineup);
-  const leagueName = activeLeague?.name || "No active league";
-  const teamName = leagueTeam?.name || "No franchise selected";
+  const [editing, setEditing] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const avatarInput = useRef(null);
+  const bannerInput = useRef(null);
+  const savedPhotoURL = publicProfile?.photoURL || privateProfile.photoURL || user.photoURL || "";
+  const savedBannerURL = publicProfile?.bannerURL || privateProfile.bannerURL || "";
+  const photoURL = useImagePreview(profileImage, savedPhotoURL);
+  const bannerURL = useImagePreview(bannerImage, savedBannerURL);
+  const normalizedName = displayName.trim();
+  const savedName = publicProfile?.displayName || privateProfile.displayName || user.displayName || "";
+  const hasChanges = hasPendingProfileChanges({ displayName, savedDisplayName: savedName, profileImage, bannerImage });
+  const heroProfile = { ...publicProfile, uid: user.uid, displayName: normalizedName || "Full Court Player", photoURL, bannerURL };
+
+  useEffect(() => { if (publicProfile?.displayName) setDisplayName(publicProfile.displayName); }, [publicProfile?.displayName]);
 
   function selectImage(type, file) {
     if (!file) return;
-    setSaveError("");
-    if (!file.type?.startsWith("image/")) {
-      setSaveError("Choose a valid image file.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setSaveError("Images must be 5 MB or smaller.");
-      return;
-    }
+    setError(""); setMessage("");
+    if (!file.type?.startsWith("image/")) { setError("Choose a valid image file."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("Images must be 5 MB or smaller."); return; }
     setCropRequest({ type, file });
   }
 
@@ -72,104 +63,51 @@ function ProfilePage() {
     if (cropRequest.type === "avatar") setProfileImage(blob);
     else setBannerImage(blob);
     setCropRequest(null);
-    setSaveMessage("Crop ready. Save changes to upload it.");
+    setEditing(true);
+    setMessage("Crop ready. Save changes when the profile looks right.");
   }
 
-  async function saveProfile(event) {
-    event.preventDefault();
-    console.log("[ProfileSettings] Save button clicked", {
-      authUid: user.uid,
-      hasProfileImage: Boolean(profileImage),
-      hasBannerImage: Boolean(bannerImage),
-    });
-    setSaveError("");
-    setSaveMessage("");
-    setSaving(true);
-
+  async function saveProfile() {
+    if (!hasChanges || !normalizedName) return;
+    setSaving(true); setError(""); setMessage("");
     try {
       const [nextPhotoURL, nextBannerURL] = await Promise.all([
-        profileImage ? uploadProfileImage(user.uid, profileImage) : photoURL,
-        bannerImage ? uploadBannerImage(user.uid, bannerImage) : bannerURL,
+        profileImage ? uploadProfileImage(user.uid, profileImage) : savedPhotoURL,
+        bannerImage ? uploadBannerImage(user.uid, bannerImage) : savedBannerURL,
       ]);
-      const nextDisplayName = displayName.trim();
-
-      console.log("[ProfileSettings] Firestore user update started", {
-        path: `users/${user.uid}`,
-      });
-      await setDoc(
-        doc(db, "users", user.uid),
-        {
-          displayName: nextDisplayName,
-          email: user.email || "",
-          photoURL: nextPhotoURL,
-          bannerURL: nextBannerURL,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      console.log("[ProfileSettings] Firestore user update completed", {
-        path: `users/${user.uid}`,
-      });
-      await updateProfile(user, { displayName: nextDisplayName, photoURL: nextPhotoURL });
-
-      setProfileImage(null);
-      setBannerImage(null);
-      setSaveMessage("Profile settings saved.");
-    } catch (error) {
-      console.error("[ProfileSettings] Save failed:", error);
-      setSaveError(error.message || "Could not save profile settings.");
-    } finally {
-      setSaving(false);
-    }
+      const privateRef = doc(db, "users", user.uid);
+      const projectionRef = publicProfileRef(user.uid);
+      const projectionSnapshot = await getDoc(projectionRef);
+      const now = serverTimestamp();
+      const batch = writeBatch(db);
+      batch.set(privateRef, { displayName: normalizedName, email: user.email || "", photoURL: nextPhotoURL, bannerURL: nextBannerURL, updatedAt: now }, { merge: true });
+      batch.set(projectionRef, projectionSnapshot.exists() ? { displayName: normalizedName, photoURL: nextPhotoURL, bannerURL: nextBannerURL, updatedAt: now } : { uid: user.uid, displayName: normalizedName, photoURL: nextPhotoURL, bannerURL: nextBannerURL, joinedAt: now, followersCount: 0, followingCount: 0, updatedAt: now }, { merge: true });
+      await batch.commit();
+      await updateProfile(user, { displayName: normalizedName, photoURL: nextPhotoURL });
+      setProfileImage(null); setBannerImage(null); setMessage("Profile changes saved.");
+    } catch (nextError) { setError(getUserFriendlyError(nextError, "Could not save profile changes.")); }
+    finally { setSaving(false); }
   }
 
-  return (
-    <PageLayout>
-      <section className="settings-hero">
-        <div
-          className="settings-hero__banner"
-          aria-hidden="true"
-          style={bannerPreview ? { backgroundImage: `linear-gradient(180deg, transparent 55%, #071426a6), url("${bannerPreview}")` } : undefined}
-        />
-        <div className="settings-hero__identity">
-          <span className="settings-avatar">
-            {profilePreview ? <img src={profilePreview} alt="" referrerPolicy="no-referrer" /> : initial}
-          </span>
-          <div><h1>{resolvedDisplayName}</h1><p className="settings-hero__email">{teamName}{activeLeague ? ` · ${activeLeague.name}` : ""}</p></div>
-        </div>
-      </section>
+  if (loading && !publicProfile) return <PageLayout><ProfileHeroSkeleton /></PageLayout>;
 
-      <section className="settings-layout">
-        <form className="settings-card account-settings" onSubmit={saveProfile}>
-          <div className="settings-card__heading"><div><p className="section-label">ACCOUNT</p><h2>Profile settings</h2></div></div>
-          <label className="settings-field"><span>Display name</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Your display name" maxLength="60" /></label>
-          <div className="settings-field"><span>Email address</span><div className="settings-readonly">{user.email}</div></div>
-          <div className="settings-assets">
-            <input ref={profileInputRef} className="settings-file-input" type="file" accept="image/*" onChange={(event) => { selectImage("avatar", event.target.files?.[0]); event.target.value = ""; }} />
-            <button type="button" className="asset-control" onClick={() => profileInputRef.current?.click()}><i aria-hidden="true">+</i><span><b>{photoURL || profileImage ? "Replace / re-crop picture" : "Profile picture"}</b><small>{profileImage ? "New crop ready to save" : "Square crop · max 5 MB"}</small></span></button>
-            <input ref={bannerInputRef} className="settings-file-input" type="file" accept="image/*" onChange={(event) => { selectImage("banner", event.target.files?.[0]); event.target.value = ""; }} />
-            <button type="button" className="asset-control" onClick={() => bannerInputRef.current?.click()}><i aria-hidden="true">+</i><span><b>{bannerURL || bannerImage ? "Replace / re-crop banner" : "Banner image"}</b><small>{bannerImage ? "New crop ready to save" : "Wide crop · max 5 MB"}</small></span></button>
-          </div>
-          <div className="settings-card__actions"><small>Profile and banner images are stored securely in Firebase Storage.</small><button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</button></div>
-          {saveError && <p className="settings-save-message settings-save-message--error" role="alert">{saveError}</p>}
-          {saveMessage && <p className="settings-save-message" role="status">{saveMessage}</p>}
-        </form>
-
-        <aside className="settings-card fantasy-settings">
-          <div className="settings-card__heading"><div><p className="section-label">FANTASY IDENTITY</p><h2>Franchise snapshot</h2></div></div>
-          <div className="fantasy-team-name"><span>TEAM NAME</span><b>{teamName}</b></div>
-          <dl className="fantasy-details"><div><dt>League</dt><dd>{leagueName}</dd></div><div><dt>Season</dt><dd>{activeLeague?.season ? `Season ${activeLeague.season}` : "-"}</dd></div></dl>
-          <div className="fantasy-metrics"><div><span>LINEUP OVR</span><b>{overall || "-"}</b></div><div><span>RECORD</span><b>{record.wins}<i>-{record.losses}</i></b></div><div><span>CHEMISTRY</span><b>{getChemistry(roster) || "-"}<i>%</i></b></div></div>
-        </aside>
-      </section>
-
-      <section className="settings-roster">
-        <div className="settings-card__heading"><div><p className="section-label">SAVED ROSTER</p><h2>Franchise roster <span>{roster.length}/{rosterSize} players</span></h2></div><span className="settings-roster__label">FRANCHISE PREVIEW</span></div>
-        {roster.length ? <div className="settings-roster__grid">{roster.map((player) => <article key={player.id} className="settings-roster__player" onClick={() => openPlayerDetails(player)} role="button" tabIndex="0" onKeyDown={(event) => { if (event.key === "Enter") openPlayerDetails(player); }}><img src={player.image} alt="" /><div><span>{player.position} / {player.team}</span><b>{player.name}</b></div><strong>{player.overall}<small>OVR</small></strong></article>)}</div> : <div className="settings-roster__empty">Your selected players will appear here once your franchise is built.</div>}
-      </section>
-      {cropRequest && <ImageCropEditor file={cropRequest.file} type={cropRequest.type} onCancel={() => setCropRequest(null)} onConfirm={acceptCrop} />}
-    </PageLayout>
-  );
+  return <PageLayout>
+    <div className="profile-page own-profile-page">
+      <input ref={avatarInput} className="settings-file-input" type="file" accept="image/*" onChange={(event) => { selectImage("avatar", event.target.files?.[0]); event.target.value = ""; }} />
+      <input ref={bannerInput} className="settings-file-input" type="file" accept="image/*" onChange={(event) => { selectImage("banner", event.target.files?.[0]); event.target.value = ""; }} />
+      <ProfileIdentityHero profile={heroProfile} onOpenSocial={setOpenSocialList} onChangePhoto={() => avatarInput.current?.click()} onChangeBanner={() => bannerInput.current?.click()}>
+        <button className="button-secondary profile-action" type="button" aria-expanded={editing} onClick={() => setEditing((current) => !current)}>{editing ? "Close Edit" : "Edit Profile"}</button>
+      </ProfileIdentityHero>
+      {editing && <section className="profile-edit-panel">
+        <label><span>DISPLAY NAME</span><input value={displayName} maxLength="60" onChange={(event) => { setDisplayName(event.target.value); setMessage(""); }} /></label>
+        <div><small>Avatar and banner changes remain private previews until saved.</small><button className="button-primary" type="button" disabled={!hasChanges || !normalizedName || saving} onClick={saveProfile}>{saving ? "Saving..." : "Save Changes"}</button></div>
+        {error && <p className="settings-save-message settings-save-message--error" role="alert">{error}</p>}
+        {message && <p className="settings-save-message" role="status">{message}</p>}
+      </section>}
+    </div>
+    {cropRequest && <ImageCropEditor file={cropRequest.file} type={cropRequest.type} onCancel={() => setCropRequest(null)} onConfirm={acceptCrop} />}
+    {openSocialList && <SocialListModal uid={user.uid} type={openSocialList} counts={publicProfile} onClose={() => setOpenSocialList(null)} />}
+  </PageLayout>;
 }
 
 export default ProfilePage;

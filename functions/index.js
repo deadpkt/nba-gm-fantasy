@@ -28,11 +28,71 @@ import { buildPreseasonRosterRepair } from "./shared/preseasonRosterRepair.js";
 import { buildDraftTurnWindow, draftTurnIdentity, draftTurnMatches, isDraftTurnExpired, selectDeterministicAutoPick } from "./shared/draftTimer.js";
 import { syncNbaCatalog as runNbaCatalogSync } from "./lib/syncNbaCatalog.js";
 import { normalizeRosterConfig } from "./shared/rosterConfig.js";
+import { buildFollowMutation, buildPublicProfile, validateFollowTarget } from "./shared/social.js";
 
 if (!getApps().length) initializeApp();
 
 const db = getFirestore();
 const balldontlieApiKey = defineSecret("BALLDONTLIE_API_KEY");
+
+export const ensurePublicProfile = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  const { targetUid } = request.data || {};
+  if (typeof targetUid !== "string" || !targetUid.trim()) throw new HttpsError("invalid-argument", "A profile UID is required.");
+  const uid = targetUid.trim();
+  const userRef = db.doc(`users/${uid}`);
+  const publicRef = db.doc(`publicProfiles/${uid}`);
+  return db.runTransaction(async (transaction) => {
+    const [userSnapshot, publicSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(publicRef)]);
+    if (!userSnapshot.exists) throw new HttpsError("not-found", "Profile unavailable.");
+    if (publicSnapshot.exists) return { created: false };
+    transaction.create(publicRef, buildPublicProfile(uid, userSnapshot.data(), {}, Timestamp.now()));
+    return { created: true };
+  });
+});
+
+async function mutateFollow(request, following) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  let targetUid;
+  try { targetUid = validateFollowTarget(request.auth.uid, request.data?.targetUid); }
+  catch (error) { throw new HttpsError("invalid-argument", error.message); }
+  const callerUid = request.auth.uid;
+  const callerUserRef = db.doc(`users/${callerUid}`);
+  const targetUserRef = db.doc(`users/${targetUid}`);
+  const callerProfileRef = db.doc(`publicProfiles/${callerUid}`);
+  const targetProfileRef = db.doc(`publicProfiles/${targetUid}`);
+  const followingRef = callerProfileRef.collection("following").doc(targetUid);
+  const followerRef = targetProfileRef.collection("followers").doc(callerUid);
+  return db.runTransaction(async (transaction) => {
+    const [callerUser, targetUser, callerPublic, targetPublic, followingEdge, followerEdge] = await Promise.all([
+      transaction.get(callerUserRef), transaction.get(targetUserRef), transaction.get(callerProfileRef),
+      transaction.get(targetProfileRef), transaction.get(followingRef), transaction.get(followerRef),
+    ]);
+    if (!callerUser.exists) throw new HttpsError("failed-precondition", "Your profile is unavailable.");
+    if (!targetUser.exists) throw new HttpsError("not-found", "Profile unavailable.");
+    const mutation = buildFollowMutation({ callerProfile: callerPublic.data(), targetProfile: targetPublic.data(), followingEdgeExists: followingEdge.exists, followerEdgeExists: followerEdge.exists, desiredFollowing: following });
+    if (!mutation.changed) {
+      return { following, idempotent: true };
+    }
+    const now = Timestamp.now();
+    const callerProfile = buildPublicProfile(callerUid, callerUser.data(), callerPublic.data() || {}, now);
+    const targetProfile = buildPublicProfile(targetUid, targetUser.data(), targetPublic.data() || {}, now);
+    const counts = buildFollowMutation({ callerProfile, targetProfile, followingEdgeExists: followingEdge.exists, followerEdgeExists: followerEdge.exists, desiredFollowing: following });
+    transaction.set(callerProfileRef, { ...callerProfile, followingCount: counts.callerFollowingCount });
+    transaction.set(targetProfileRef, { ...targetProfile, followersCount: counts.targetFollowersCount });
+    if (following) {
+      transaction.set(followingRef, { uid: targetUid, createdAt: now });
+      transaction.set(followerRef, { uid: callerUid, createdAt: now });
+    } else {
+      transaction.delete(followingRef);
+      transaction.delete(followerRef);
+    }
+    return { following, idempotent: false, ...counts };
+  });
+}
+
+export const followUser = onCall((request) => mutateFollow(request, true));
+export const unfollowUser = onCall((request) => mutateFollow(request, false));
 
 export const syncNbaPlayerCatalog = onCall({ secrets: [balldontlieApiKey], timeoutSeconds: 1800, memory: "1GiB" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");

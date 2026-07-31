@@ -17,6 +17,7 @@ import {
 import { startNextSeason } from "../lib/seasonHistory";
 import { formatMoney } from "../lib/contracts";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
+import { getUserFriendlyError } from "../lib/clientErrors";
 
 function getLeaguePhaseMessage(status) {
   switch (status) {
@@ -53,7 +54,10 @@ function LeagueLobbyPage() {
     cancelLeague,
   } = useLeague();
   const navigate = useNavigate();
-  const { contracts, contractsInitialized, payroll, salaryCap, validation: contractValidation } = useLeagueContracts();
+  const isActiveLeague = activeLeagueId === leagueId;
+  const { contracts, contractsInitialized, payroll, salaryCap, validation: contractValidation } = useLeagueContracts({
+    enabled: isActiveLeague && activeLeague?.status === LEAGUE_STATUS.OFFSEASON,
+  });
   const location = useLocation();
   const [inviteLeague, setInviteLeague] = useState(null);
   const [resolvedRouteLeagueId, setResolvedRouteLeagueId] = useState(null);
@@ -62,7 +66,6 @@ function LeagueLobbyPage() {
   const [busyAction, setBusyAction] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const observedPhase = useRef({ leagueId: null, status: null });
-  const isActiveLeague = activeLeagueId === leagueId;
   const league = isActiveLeague ? activeLeague || inviteLeague : inviteLeague;
   const members = isActiveLeague ? activeMembers : inviteMembers;
   const isMember = Boolean(league?.memberIds?.includes(user.uid));
@@ -90,6 +93,12 @@ function LeagueLobbyPage() {
     setResolvedRouteLeagueId(null);
     setInviteMembers([]);
     setError("");
+
+    if (isActiveLeague) {
+      setResolvedRouteLeagueId(leagueId);
+      return undefined;
+    }
+
     return onSnapshot(
       doc(db, "leagues", leagueId),
       (snapshot) => {
@@ -105,7 +114,7 @@ function LeagueLobbyPage() {
         setResolvedRouteLeagueId(leagueId);
       },
     );
-  }, [leagueId]);
+  }, [isActiveLeague, leagueId]);
 
   useEffect(() => {
     if (isActiveLeague || !isMember) {
@@ -129,7 +138,7 @@ function LeagueLobbyPage() {
       await action();
       onSuccess?.();
     } catch (nextError) {
-      setError(nextError.message);
+      setError(getUserFriendlyError(nextError, "That league action could not be completed."));
     } finally {
       setBusyAction("");
     }
@@ -250,7 +259,7 @@ function LeagueLobbyPage() {
 
       {accessMessage && <p className="league-access-message" role="status">{accessMessage}</p>}
 
-      {isActiveLeague && isMember && <LeagueProgress />}
+      {isActiveLeague && isMember && <LeagueProgress contracts={contracts} />}
 
       <section className="league-lobby league-dashboard-summary">
         <div className="league-code">
@@ -277,7 +286,7 @@ function LeagueLobbyPage() {
             <article key={member.id}>
               <strong>{String(index + 1).padStart(2, "0")}</strong>
               <span>{member.role === "commissioner" ? "COMMISSIONER" : "FRANCHISE OWNER"}</span>
-              <b>{member.displayName}</b>
+              <b><Link className="gm-profile-link" to={`/profile/${member.uid}`}>{member.displayName}</Link></b>
               <i className={
                 (league.status === LEAGUE_STATUS.SEASON_READY
                   ? seasonReadyTeams.some((team) => team.ownerUid === member.uid)

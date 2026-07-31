@@ -2,6 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import { resolveLeagueRouteAccess, ROUTE_ACCESS } from "../lib/routeAccess";
+import AppLoadingScreen from "./brand/AppLoadingScreen";
 
 function LeagueRouteGuard({ children, requireActive = true, requireMember = true, commissionerOnly = false, allowedStatuses }) {
   const { user } = useAuth();
@@ -9,7 +10,7 @@ function LeagueRouteGuard({ children, requireActive = true, requireMember = true
   const location = useLocation();
   const access = resolveLeagueRouteAccess({ leagueLoading, activeLeagueId, activeLeague, userId: user?.uid, requireActive, requireMember, commissionerOnly, allowedStatuses, pathname: location.pathname });
 
-  if (access.status === ROUTE_ACCESS.LOADING) return <div className="route-loader">Loading league access...</div>;
+  if (access.status === ROUTE_ACCESS.LOADING) return <AppLoadingScreen />;
   if (access.status === ROUTE_ACCESS.REDIRECT) {
     const messages = {
       "missing-league": "Create or join a league before opening that page.",

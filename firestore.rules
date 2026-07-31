@@ -33,6 +33,32 @@ service cloud.firestore {
       return leagueData.get('readyMemberIds', []);
     }
 
+    function isNewPublicProfile(userId) {
+      return request.resource.data.keys().hasOnly([
+          'uid', 'displayName', 'photoURL', 'bannerURL', 'joinedAt',
+          'followersCount', 'followingCount', 'updatedAt'
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.photoURL is string
+        && request.resource.data.bannerURL is string
+        && request.resource.data.followersCount == 0
+        && request.resource.data.followingCount == 0;
+    }
+
+    function isOwnPublicPresentationUpdate(userId) {
+      return request.auth.uid == userId
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'bannerURL', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.photoURL is string
+        && request.resource.data.bannerURL is string;
+    }
+
     function hasCurrentRosterConfig(leagueData) {
       let config = leagueData.get('rosterConfig', {});
       return config.keys().hasOnly(['version', 'rosterSize', 'starterCount', 'benchSize'])
@@ -252,6 +278,23 @@ service cloud.firestore {
         && onlyProfileFieldsChanged()
         || isCancelledLeagueReferenceCleanup();
 
+    }
+
+    match /publicProfiles/{userId} {
+      allow get, list: if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId && isNewPublicProfile(userId);
+      allow update: if signedIn() && isOwnPublicPresentationUpdate(userId);
+      allow delete: if false;
+
+      match /followers/{followerUid} {
+        allow get, list: if signedIn();
+        allow write: if false;
+      }
+
+      match /following/{targetUid} {
+        allow get, list: if signedIn();
+        allow write: if false;
+      }
     }
 
     match /leagues/{leagueId} {

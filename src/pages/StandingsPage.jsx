@@ -1,11 +1,13 @@
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import { db } from "../lib/firebase";
 import { finalizeRegularSeason, initializePlayoffs } from "../lib/officialGames";
 import { calculateStandings, findRecordMismatches } from "../lib/standings";
+import { getUserFriendlyError, reportClientError } from "../lib/clientErrors";
 import "../standings.css";
 
 const formatWinPercentage = (value) => value.toFixed(3).replace(/^0/, "");
@@ -68,14 +70,14 @@ function StandingsPage() {
     ) return;
     setFinalizationRequested(true);
     void finalizeRegularSeason({ leagueId: activeLeagueId }).catch((finalizeError) => {
-      if (import.meta.env.DEV) console.warn("[Standings] Trusted legacy finalization was not available.", finalizeError);
+      reportClientError("Standings finalization", finalizeError);
     });
   }, [activeLeague?.seasonProgress?.regularSeasonComplete, activeLeagueId, finalResult, finalizationRequested]);
 
   useEffect(() => {
     if (!import.meta.env.DEV || loading) return;
     const mismatches = findRecordMismatches(standings);
-    if (mismatches.length) console.warn("[Standings] Stored records differ from official results.", mismatches);
+    if (mismatches.length && import.meta.env.DEV) console.warn("[Standings] Stored records differ from official results.", { count: mismatches.length });
   }, [loading, standings]);
 
   return (
@@ -93,7 +95,7 @@ function StandingsPage() {
             <tbody>{displayStandings.map((row) => (
               <tr className={`${row.teamUid === user.uid ? "is-current" : ""} ${row.rank === 1 ? "is-top-seed" : ""}`} key={row.teamUid}>
                 <td><strong>{row.rank}</strong></td>
-                <td><span className="standings-team"><i>{row.teamName.slice(0, 2).toUpperCase()}</i><b>{row.teamName}</b><small>{finalResult ? qualifierUids.has(row.teamUid) ? "QUALIFIED" : "ELIMINATED" : row.teamUid === user.uid ? "YOUR TEAM" : ""}</small></span></td>
+                <td><span className="standings-team"><i>{row.teamName.slice(0, 2).toUpperCase()}</i><b>{row.teamName}</b><small>{finalResult ? qualifierUids.has(row.teamUid) ? "QUALIFIED" : "ELIMINATED" : row.teamUid === user.uid ? "YOUR TEAM" : ""} <Link className="gm-profile-link" to={`/profile/${row.teamUid}`}>GM PROFILE</Link></small></span></td>
                 <td>{row.gp}</td><td>{row.wins}</td><td>{row.losses}</td><td>{formatWinPercentage(row.winPercentage)}</td><td>{row.pointsFor}</td><td>{row.pointsAgainst}</td>
                 <td className={row.pointDifferential > 0 ? "is-positive" : row.pointDifferential < 0 ? "is-negative" : ""}>{row.pointDifferential > 0 ? "+" : ""}{row.pointDifferential}</td>
                 <td><em className={row.streak.startsWith("W") ? "is-winning" : row.streak.startsWith("L") ? "is-losing" : ""}>{row.streak}</em></td>
@@ -109,7 +111,7 @@ function StandingsPage() {
             {activeLeague?.postseason?.status === "ready" && activeLeague.commissionerUid === user.uid && (
               <button className="button-primary" type="button" disabled={playoffBusy} onClick={async () => {
                 setPlayoffBusy(true); setPlayoffError("");
-                try { await initializePlayoffs({ leagueId: activeLeagueId }); } catch (nextError) { setPlayoffError(nextError.message); } finally { setPlayoffBusy(false); }
+                try { await initializePlayoffs({ leagueId: activeLeagueId }); } catch (nextError) { setPlayoffError(getUserFriendlyError(nextError, "Playoffs could not be prepared.")); } finally { setPlayoffBusy(false); }
               }}>{playoffBusy ? "Initializing..." : "Initialize Playoffs"}</button>
             )}
             {playoffError && <p role="alert">{playoffError}</p>}

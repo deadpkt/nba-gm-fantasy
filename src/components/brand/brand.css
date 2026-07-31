@@ -1,0 +1,17 @@
+.full-court-mark { display: block; flex: 0 0 auto; color: #e32842; }
+.logo > .brand-lockup { display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; width: auto; height: auto; min-width: 0; border: 0; border-radius: 0; background: transparent; color: inherit; box-shadow: none; }
+.logo .brand-lockup__name { display: block; color: #fff; font-family: var(--font-display); font-size: 20px; font-style: italic; font-weight: 800; line-height: .9; letter-spacing: -.025em; white-space: nowrap; }
+.app-loading { position: fixed; z-index: 1000; inset: 0; display: grid; place-content: center; justify-items: center; background: radial-gradient(circle at 50% 42%, #132b45 0, #071426 42%, #050d1c 75%); color: #fff; }
+.app-loading__play { position: relative; width: 112px; height: 130px; }
+.app-loading__ball { position: absolute; z-index: 2; top: 2px; left: 34px; animation: full-court-shot 1.55s cubic-bezier(.45,.05,.55,.95) infinite; }
+.app-loading__hoop { position: absolute; right: 8px; bottom: 0; width: 96px; height: 70px; transform-origin: 50% 24px; animation: full-court-rim 1.55s ease-in-out infinite; }
+.app-loading__brand { display: flex; align-items: center; gap: 9px; margin-top: 8px; }
+.app-loading__brand b { font: 850 25px/1 var(--font-display); letter-spacing: -.01em; }
+.app-loading > span { margin-top: 10px; color: #879db4; font-size: 11px; }
+.route-loading { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 120px; color: #8fa5bc; font-size: 11px; }
+.route-loading i { width: 8px; height: 8px; border: 2px solid #e32842; border-radius: 50%; animation: route-loading-pulse .9s ease-in-out infinite alternate; }
+@keyframes full-court-shot { 0% { opacity: 0; transform: translateY(-16px) rotate(-25deg) scale(.92); } 15% { opacity: 1; } 62% { opacity: 1; transform: translateY(58px) rotate(140deg) scale(.88); } 78%,100% { opacity: 0; transform: translateY(82px) rotate(190deg) scale(.72); } }
+@keyframes full-court-rim { 0%,55%,100% { transform: rotate(0); } 68% { transform: rotate(2deg); } 78% { transform: rotate(-1deg); } }
+@keyframes route-loading-pulse { to { opacity: .35; transform: scale(.7); } }
+@media(max-width:560px){.logo>.brand-lockup{gap:7px}.logo .brand-lockup__name{font-size:17px}.app-loading__play{transform:scale(.9)}}
+@media(prefers-reduced-motion:reduce){.app-loading__ball,.app-loading__hoop,.route-loading i{animation:none}.app-loading__ball{top:46px;opacity:1;transform:scale(.88)}}

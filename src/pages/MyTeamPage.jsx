@@ -9,6 +9,7 @@ import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
 import useLeagueContracts from "../hooks/useLeagueContracts";
 import { formatMoney, getContractStatus } from "../lib/contracts";
+import { getUserFriendlyError, reportClientError } from "../lib/clientErrors";
 import { releaseFreeAgent } from "../lib/freeAgency";
 import { isLeagueTeamSeasonReady } from "../lib/leagueTeams";
 import { getOffseasonTeamPreparationState, normalizeOffseasonPreparation } from "../lib/offseasonPreparation";
@@ -67,9 +68,7 @@ function MyTeamPage() {
   const preseasonRepairRequired = seasonSetup && activeLeague?.season === 1 && !activeLeague?.seasonStartedAt && roster.length === rosterConfig.rosterSize && !rosterFeasibility.valid;
 
   function save(action) {
-    void action().catch((error) =>
-      console.error("Could not save league franchise:", error),
-    );
+    void action().catch((error) => reportClientError("Franchise", error));
   }
 
   async function runSetup(actionName, action, onSuccess) {
@@ -79,7 +78,7 @@ function MyTeamPage() {
       await action();
       onSuccess?.();
     } catch (error) {
-      setSetupError(error.message || "Season setup could not be updated.");
+      setSetupError(getUserFriendlyError(error, "Season setup could not be updated."));
     } finally {
       setSetupBusy("");
     }

@@ -1,128 +1,65 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import LeagueProgress from "../components/LeagueProgress";
-import { openPlayerDetails } from "../components/player/PlayerDetailsModal";
+import DecorativeBasketballCourt from "../components/DecorativeBasketballCourt";
+import HowFullCourtWorksModal from "../components/HowFullCourtWorksModal";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
-import { LEAGUE_STATUS } from "../lib/leagueStatuses";
+import { getLeagueStatusLabel, LEAGUE_STATUS } from "../lib/leagueStatuses";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
-import { getLineupOverall, isLineupComplete } from "../utils/team";
+import { isLineupComplete } from "../utils/team";
+import "../dashboard.css";
+
+function phaseLinks(leagueId, status) {
+  const league = { to: `/league/${leagueId}`, label: "League" };
+  if (status === LEAGUE_STATUS.DRAFTING) return [league, { to: "/league/draft", label: "Draft" }];
+  if (status === LEAGUE_STATUS.SEASON_READY) return [league, { to: "/my-team", label: "My Team" }];
+  if (status === LEAGUE_STATUS.REGULAR_SEASON) return [league, { to: "/games", label: "Games" }, { to: "/standings", label: "Standings" }];
+  if (status === LEAGUE_STATUS.PLAYOFFS) return [league, { to: "/playoffs", label: "Playoffs" }, { to: "/standings", label: "Standings" }];
+  if (status === LEAGUE_STATUS.OFFSEASON) return [league, { to: "/free-agency", label: "Free Agency" }, { to: "/league/history", label: "History" }];
+  return [league];
+}
 
 function HomePage() {
+  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const { user } = useAuth();
   const { roster, lineup, record, leagueTeam } = useLeagueTeam();
-  const { activeLeague, activeLeagueId, members } = useLeague();
+  const { activeLeague, activeLeagueId } = useLeague();
   const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
   const lineupReady = isLineupComplete(roster, lineup);
-  const overall = getLineupOverall(roster, lineup);
-  const name = user.displayName || "Coach";
-  const featuredPlayer = [...roster].sort(
-    (first, second) => second.overall - first.overall,
-  )[0];
-  const leagueName = activeLeague?.name || "No active league";
-  const teamName = leagueTeam?.name || `${name}'s Franchise`;
-  const nextMatchLabel = lineupReady ? "Ready to schedule" : "Complete your lineup";
-  const isDrafting = activeLeague?.status === LEAGUE_STATUS.DRAFTING;
-  const isSeasonReady = activeLeague?.status === LEAGUE_STATUS.SEASON_READY;
-  const leagueDestination = activeLeagueId
-    ? `/league/${activeLeagueId}`
-    : "/league";
-  const primaryDestination = isDrafting
-    ? "/league/draft"
-    : isSeasonReady
-      ? "/my-team"
-      : leagueDestination;
-  const primaryLabel = isDrafting
-    ? "Enter draft"
-    : isSeasonReady
-      ? "Set your lineup"
-    : activeLeague
-      ? "Open league lobby"
-      : "Create or join league";
+  const name = user.displayName || "GM";
 
-  return (
-    <PageLayout>
-      <div className="dashboard-shell">
-        <section className="dashboard-welcome">
-          <div>
-            <p className="section-label">FRANCHISE COMMAND CENTER</p>
-            <h1>Welcome back, <span>{name}.</span></h1>
-            <p>Manage your unit, chase the season, and take control at tip-off.</p>
-          </div>
-          <div className="dashboard-welcome__live"><i /><span>FRANCHISE ONLINE</span><b>{lineupReady ? "GAME READY" : "LINEUP SETUP"}</b></div>
-        </section>
+  if (!activeLeague || !activeLeagueId) return <PageLayout><main className="gm-dashboard gm-dashboard--empty">
+    <section className="gm-entry-hero">
+      <DecorativeBasketballCourt className="gm-entry-hero__court" />
+      <div><p>FULL COURT</p><h1>Build your <span>dynasty.</span></h1><div className="gm-entry-hero__copy">Draft NBA players. Build your franchise.<br />Compete with friends. Win championships.</div><div className="gm-entry-hero__actions"><Link className="button-primary" to="/league">Create or Join League <b aria-hidden="true">→</b></Link><button className="button-secondary" type="button" onClick={() => setLearnMoreOpen(true)}>Learn More <b aria-hidden="true">▷</b></button></div></div>
+    </section>
+    <section className="gm-value-strip" id="full-court-features" aria-label="How FULL COURT works"><div><i aria-hidden="true">◇</i><p><b>Draft</b><span>Build your roster your way</span></p></div><div><i aria-hidden="true">♜</i><p><b>Compete</b><span>Play synchronized league games</span></p></div><div><i aria-hidden="true">☆</i><p><b>Dynasty</b><span>Win seasons and build history</span></p></div></section>
+    {learnMoreOpen && <HowFullCourtWorksModal onClose={() => setLearnMoreOpen(false)} />}
+  </main></PageLayout>;
 
-        {activeLeague ? (
-          <section className="continue-league-card">
-            <header>
-              <span>CONTINUE YOUR LEAGUE</span>
-              <div><b>{activeLeague.name}</b><small>SEASON {activeLeague.season} · {activeLeague.status.replaceAll("_", " ").toUpperCase()}</small></div>
-            </header>
-            <LeagueProgress compact />
-          </section>
-        ) : (
-          <section className="league-onboarding">
-            <div>
-              <span>HOW A LEAGUE WORKS</span>
-              <h2>Build a franchise across seasons.</h2>
-              <ol><li>Create or join</li><li>Draft your roster</li><li>Set your starting five</li><li>Play the regular season</li><li>Reach the playoffs</li><li>Build your franchise again</li></ol>
-            </div>
-            <div className="league-onboarding__actions"><Link className="basketball-action basketball-action--primary" to="/league">Create League <b>→</b></Link><Link className="basketball-action basketball-action--secondary" to="/league">Join League <b>→</b></Link></div>
-          </section>
-        )}
+  const links = phaseLinks(activeLeagueId, activeLeague.status);
+  return <PageLayout><main className="gm-dashboard">
+    <header className="gm-dashboard__header">
+      <p>GM Dashboard</p>
+      <h1>{leagueTeam?.name || `${name}'s Franchise`}</h1>
+      <span>{activeLeague.name} · Season {activeLeague.season} · {getLeagueStatusLabel(activeLeague.status)}{activeLeague.seasonProgress?.currentRound ? ` · Round ${activeLeague.seasonProgress.currentRound}` : ""}</span>
+    </header>
 
-        <section className="dashboard-hero-card" aria-label="Team overview">
-          <div className="dashboard-hero-card__noise" aria-hidden="true" />
-          <div className="dashboard-hero-card__identity">
-            <span>YOUR FRANCHISE</span>
-            <h2>{teamName}</h2>
-            <p>{leagueName}</p>
-            <Link to={primaryDestination}>{primaryLabel} <b>→</b></Link>
-          </div>
-          <div className="dashboard-hero-card__overall">
-            <span>TEAM OVERALL</span>
-            <b>{overall || "--"}</b>
-            <small>{lineupReady ? "STARTING FIVE ACTIVE" : `${roster.length}/${rosterSize} PLAYERS SELECTED`}</small>
-          </div>
-          <div className="dashboard-hero-card__silhouette" aria-hidden="true">FC</div>
-        </section>
+    <LeagueProgress compact />
 
-        <section className="dashboard-metrics" aria-label="Franchise metrics">
-          <article><span>SEASON RECORD</span><b>{record.wins}<i>-{record.losses}</i></b><small>League matches</small></article>
-          <article><span>CURRENT LEAGUE</span><b>{activeLeague?.season ? `S${activeLeague.season}` : "--"}</b><small>{activeLeague ? `${members.length}/${activeLeague.maxMembers} franchises` : "Join a league to compete"}</small></article>
-          <article><span>NEXT MATCH</span><b className="dashboard-metrics__next">{lineupReady ? "READY" : "LOCKED"}</b><small>{nextMatchLabel}</small></article>
-        </section>
-
-        <section className="dashboard-grid">
-          <article className="dashboard-featured">
-            <div className="dashboard-panel__head"><div><span>FEATURED PLAYER</span><b>Franchise spotlight</b></div><Link to={primaryDestination}>League flow →</Link></div>
-            {featuredPlayer ? <button type="button" className="dashboard-featured__player" style={{ "--featured-color": featuredPlayer.color || "#e32842" }} onClick={() => openPlayerDetails(featuredPlayer)}>
-              <div className="dashboard-featured__image"><img src={featuredPlayer.image} alt={featuredPlayer.name} /></div>
-              <div className="dashboard-featured__copy"><small>{featuredPlayer.position} · {featuredPlayer.team}</small><h2>{featuredPlayer.name}</h2><p>Highest-rated player on your current roster.</p><div><span>OVR <b>{featuredPlayer.overall}</b></span><span>PTS <b>{featuredPlayer.stats?.points ?? "--"}</b></span><span>AST <b>{featuredPlayer.stats?.assists ?? "--"}</b></span></div></div>
-            </button> : <div className="dashboard-featured__empty"><b>Your spotlight awaits.</b><p>Complete the active league flow before building your franchise roster.</p><Link to={primaryDestination}>{primaryLabel} →</Link></div>}
-          </article>
-
-          <aside className="dashboard-activity">
-            <div className="dashboard-panel__head"><div><span>RECENT ACTIVITY</span><b>Franchise feed</b></div><i>LIVE</i></div>
-            <div className="dashboard-activity__item"><i className={lineupReady ? "is-ready" : ""} /><div><span>LINEUP STATUS</span><b>{lineupReady ? "Starting five locked in" : "Starting five in progress"}</b></div><small>NOW</small></div>
-            <div className="dashboard-activity__item"><i /><div><span>LEAGUE HQ</span><b>{activeLeague ? `${activeLeague.name} is active` : "No active league selected"}</b></div><small>—</small></div>
-            <div className="dashboard-activity__item"><i /><div><span>LEAGUE PHASE</span><b>{activeLeague ? activeLeague.status.replaceAll("_", " ").toUpperCase() : "CREATE OR JOIN A LEAGUE"}</b></div><small>—</small></div>
-            <p>Activity will populate as your franchise plays.</p>
-          </aside>
-        </section>
-
-        <section className="dashboard-actions" aria-label="Quick actions">
-          <div className="dashboard-panel__head"><div><span>QUICK ACTIONS</span><b>Where to next?</b></div></div>
-          <div>
-            <Link to={primaryDestination}><span>01</span><b>{primaryLabel}</b><small>{isDrafting ? "Draft phase active" : isSeasonReady ? "Team preparation phase" : "League control center"}</small><i>→</i></Link>
-            {activeLeague && <Link to={leagueDestination}><span>02</span><b>League Dashboard</b><small>View league status</small><i>→</i></Link>}
-            <Link to="/settings"><span>{activeLeague ? "03" : "02"}</span><b>Profile & Settings</b><small>Manage your account</small><i>→</i></Link>
-          </div>
-        </section>
+    <section className="gm-franchise" aria-label="Franchise snapshot">
+      <header><div><span>Franchise snapshot</span><h2>{leagueTeam?.name || "Your Franchise"}</h2></div><Link to="/my-team">Manage Team</Link></header>
+      <div className="gm-franchise__metrics">
+        <div><span>Record</span><b>{record.wins}-{record.losses}</b></div>
+        <div><span>Roster</span><b>{roster.length}/{rosterSize}</b><small>{roster.length === rosterSize ? "Complete" : `${rosterSize - roster.length} spots open`}</small></div>
+        <div><span>Starting five</span><b>{lineupReady ? "Ready" : "Setup"}</b><small>{lineupReady ? "Lineup confirmed" : "Needs attention"}</small></div>
       </div>
-    </PageLayout>
-  );
+      <nav aria-label="Franchise shortcuts">{links.map((item) => <Link key={item.to} to={item.to}>{item.label}<span aria-hidden="true">→</span></Link>)}</nav>
+    </section>
+  </main></PageLayout>;
 }
 
 export default HomePage;

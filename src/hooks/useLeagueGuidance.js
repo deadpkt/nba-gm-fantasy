@@ -11,11 +11,15 @@ import { getOffseasonTeamPreparationState } from "../lib/offseasonPreparation";
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 import { isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
 
-export default function useLeagueGuidance() {
+export default function useLeagueGuidance({ contracts: contractsOverride } = {}) {
   const { user } = useAuth();
   const { activeLeagueId, activeLeague, members, teams } = useLeague();
   const { leagueTeam, seasonConfirmed, offseasonConfirmed } = useLeagueTeam();
-  const { contracts } = useLeagueContracts({ enabled: activeLeague?.status === LEAGUE_STATUS.OFFSEASON });
+  const offseasonActive = activeLeague?.status === LEAGUE_STATUS.OFFSEASON;
+  const { contracts: subscribedContracts } = useLeagueContracts({
+    enabled: offseasonActive && contractsOverride === undefined,
+  });
+  const contracts = contractsOverride ?? subscribedContracts;
   const [games, setGames] = useState([]);
 
   useEffect(() => {
