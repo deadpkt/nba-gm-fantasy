@@ -9,15 +9,21 @@ function BasketballCourt({ game, players, events }) {
   const event = events.at(-1) || null;
   const scene = buildPersistentCourtScene(players, events, game);
   const feedback = eventFeedback(event);
-  const ballOwnerId = event?.eventType === "steal"
-    ? event.defensivePlayerId
-    : event?.reboundPlayerId || event?.playerId;
+  const ballOwnerId =
+    event?.eventType === "steal"
+      ? event.defensivePlayerId
+      : event?.reboundPlayerId || event?.playerId;
 
   return (
-    <div className={`official-court is-${event?.eventType || "waiting"}`} aria-label="Live official basketball court">
+    <div
+      className={`official-court is-${event?.eventType || "waiting"}`}
+      aria-label="Live official basketball court"
+    >
       <div className="court-boundary" />
       <div className="court-center-line" />
-      <div className="court-center-circle"><span>GM</span></div>
+      <div className="court-center-circle">
+        <span>GM</span>
+      </div>
       <CourtHalf side="left" />
       <CourtHalf side="right" />
       {players.map((player) => (
@@ -30,8 +36,19 @@ function BasketballCourt({ game, players, events }) {
         />
       ))}
       {event?.playerId && <Basketball ball={scene.ball} event={event} />}
-      {feedback && <strong className={`court-feedback court-feedback--${event.eventType}`} key={`feedback-${event.sequence}`}>{feedback}</strong>}
-      <span className={`court-possession court-possession--${scene.offenseSide}`}>{scene.offenseSide.toUpperCase()} BALL</span>
+      {feedback && (
+        <strong
+          className={`court-feedback court-feedback--${event.eventType}`}
+          key={`feedback-${event.sequence}`}
+        >
+          {feedback}
+        </strong>
+      )}
+      <span
+        className={`court-possession court-possession--${scene.offenseSide}`}
+      >
+        {scene.offenseSide.toUpperCase()} BALL
+      </span>
     </div>
   );
 }

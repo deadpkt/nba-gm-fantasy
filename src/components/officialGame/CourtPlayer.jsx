@@ -1,5 +1,10 @@
 function initials(name = "") {
-  return name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("");
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("");
 }
 
 function CourtPlayer({ player, position, role = "stationary", hasBall }) {
@@ -10,7 +15,9 @@ function CourtPlayer({ player, position, role = "stationary", hasBall }) {
     >
       <b>{initials(player.name)}</b>
       <span>{player.name}</span>
-      <small>{player.position} · {player.side.toUpperCase()}</small>
+      <small>
+        {player.position} · {player.side.toUpperCase()}
+      </small>
     </div>
   );
 }

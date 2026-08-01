@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { findRosterPlayer, getAssignableLineupPlayers, LINEUP_POSITIONS } from "../utils/team";
+import {
+  findRosterPlayer,
+  getAssignableLineupPlayers,
+  LINEUP_POSITIONS,
+} from "../utils/team";
 import { openPlayerDetails } from "./player/PlayerDetailsModal";
 
 const formattedStat = (value) =>
@@ -173,19 +177,17 @@ function BasketballCourt({ team, lineup, onAssign }) {
                   id={`lineup-${position}`}
                   value={lineup[position] || ""}
                   onChange={(event) =>
-                    onAssign(
-                      position,
-                      event.target.value || null,
-                    )
+                    onAssign(position, event.target.value || null)
                   }
                 >
                   <option value="">Unassigned</option>
-                  {getAssignableLineupPlayers(team, lineup, position)
-                    .map((item) => (
+                  {getAssignableLineupPlayers(team, lineup, position).map(
+                    (item) => (
                       <option value={item.id} key={item.id}>
                         {item.name} ({item.overall})
                       </option>
-                    ))}
+                    ),
+                  )}
                 </select>
               </label>
             );

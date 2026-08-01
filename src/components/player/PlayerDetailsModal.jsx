@@ -14,7 +14,10 @@ function PlayerDetailsModal() {
   const [canonicalPlayer, setCanonicalPlayer] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsUnavailable, setDetailsUnavailable] = useState(false);
-  const requestedSnapshot = requestedPlayer && typeof requestedPlayer === "object" ? requestedPlayer : null;
+  const requestedSnapshot =
+    requestedPlayer && typeof requestedPlayer === "object"
+      ? requestedPlayer
+      : null;
   const requestedPlayerId = requestedSnapshot?.id ?? requestedPlayer;
   const player = canonicalPlayer || requestedSnapshot;
   useEffect(() => {
@@ -82,15 +85,28 @@ function PlayerDetailsModal() {
         {player ? (
           <>
             <PlayerHeader player={player} />
-            {detailsLoading && <p className="player-stats__unavailable">Checking for current catalog details...</p>}
-            {detailsUnavailable && <p className="player-stats__unavailable">Current catalog details are unavailable. Showing the saved player snapshot.</p>}
+            {detailsLoading && (
+              <p className="player-stats__unavailable">
+                Checking for current catalog details...
+              </p>
+            )}
+            {detailsUnavailable && (
+              <p className="player-stats__unavailable">
+                Current catalog details are unavailable. Showing the saved
+                player snapshot.
+              </p>
+            )}
             <div className="player-details__content">
               <PlayerRatings player={player} />
               <PlayerStats player={player} />
             </div>
           </>
         ) : (
-          <p className="player-stats__unavailable">{detailsLoading ? "Loading player details..." : "Player details are unavailable."}</p>
+          <p className="player-stats__unavailable">
+            {detailsLoading
+              ? "Loading player details..."
+              : "Player details are unavailable."}
+          </p>
         )}
       </section>
     </div>

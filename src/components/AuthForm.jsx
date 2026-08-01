@@ -45,7 +45,12 @@ function AuthForm({ mode }) {
       if (isSignUp) await signUp(form);
       else await login(form);
     } catch (authError) {
-      setError(getUserFriendlyError(authError, "Could not sign in. Check your details and try again."));
+      setError(
+        getUserFriendlyError(
+          authError,
+          "Could not sign in. Check your details and try again.",
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -57,7 +62,9 @@ function AuthForm({ mode }) {
     try {
       await signInWithGoogle();
     } catch (authError) {
-      setError(getUserFriendlyError(authError, "Could not sign in. Please try again."));
+      setError(
+        getUserFriendlyError(authError, "Could not sign in. Please try again."),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -68,13 +75,15 @@ function AuthForm({ mode }) {
       <section className="auth-card setup-card">
         <p className="section-label">SERVICE UNAVAILABLE</p>
         <h1>Sign-in is temporarily unavailable.</h1>
-        <p>
-          Please try again later.
-        </p>
+        <p>Please try again later.</p>
       </section>
     );
 
-  const message = error || (authError ? getUserFriendlyError(authError, "Could not sign in. Please try again.") : "");
+  const message =
+    error ||
+    (authError
+      ? getUserFriendlyError(authError, "Could not sign in. Please try again.")
+      : "");
   return (
     <section className="auth-card">
       <p className="section-label">

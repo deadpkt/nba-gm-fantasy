@@ -14,7 +14,17 @@ const ratings = [
 ];
 function PlayerRatings({ player }) {
   const source = player.ratings || {};
-  const aliases = { insideScoring: "scoring", midRange: "shooting", threePoint: "shooting", freeThrow: "shooting", ballHandle: "playmaking", passing: "playmaking", perimeterDefense: "defense", interiorDefense: "defense", athleticism: "stamina" };
+  const aliases = {
+    insideScoring: "scoring",
+    midRange: "shooting",
+    threePoint: "shooting",
+    freeThrow: "shooting",
+    ballHandle: "playmaking",
+    passing: "playmaking",
+    perimeterDefense: "defense",
+    interiorDefense: "defense",
+    athleticism: "stamina",
+  };
   return (
     <section className="player-details__section">
       <div className="player-details__section-head">
@@ -23,7 +33,11 @@ function PlayerRatings({ player }) {
       </div>
       <div className="player-ratings">
         {ratings.map(([label, key]) => {
-          const value = Number.isFinite(source[key]) ? source[key] : Number.isFinite(source[aliases[key]]) ? source[aliases[key]] : null;
+          const value = Number.isFinite(source[key])
+            ? source[key]
+            : Number.isFinite(source[aliases[key]])
+              ? source[aliases[key]]
+              : null;
           return (
             <div className="player-rating" key={key}>
               <span>{label}</span>

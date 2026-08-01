@@ -1,7 +1,14 @@
 import PlayerImage from "../player/PlayerImage";
 import { formatMoney } from "../../lib/contracts";
 
-function FreeAgentCard({ player, projectedContract, onView, onSign, signing, disabledReason }) {
+function FreeAgentCard({
+  player,
+  projectedContract,
+  onView,
+  onSign,
+  signing,
+  disabledReason,
+}) {
   return (
     <article
       className="free-agent-card"
@@ -20,13 +27,21 @@ function FreeAgentCard({ player, projectedContract, onView, onSign, signing, dis
           {player.position} · {player.team || "FREE AGENT"}
         </small>
         <h3>{player.name}</h3>
-        <span>{formatMoney(projectedContract.salary)} / {projectedContract.yearsRemaining} YEARS</span>
+        <span>
+          {formatMoney(projectedContract.salary)} /{" "}
+          {projectedContract.yearsRemaining} YEARS
+        </span>
       </div>
       <div className="free-agent-card__actions">
         <button type="button" onClick={() => onView(player)}>
           View player
         </button>
-        <button type="button" disabled={Boolean(signing || disabledReason)} title={disabledReason || "Sign this player"} onClick={() => onSign(player)}>
+        <button
+          type="button"
+          disabled={Boolean(signing || disabledReason)}
+          title={disabledReason || "Sign this player"}
+          onClick={() => onSign(player)}
+        >
           {signing ? "Signing..." : disabledReason || "Sign"}
         </button>
       </div>
