@@ -7,6 +7,7 @@ export const LEAGUE_STATUS = Object.freeze({
   OFFSEASON: "offseason",
   FINISHED: "finished",
   CANCELLED: "cancelled",
+  ARCHIVED: "archived",
 });
 
 export const LEAGUE_STATUSES = Object.freeze(Object.values(LEAGUE_STATUS));
@@ -20,6 +21,7 @@ const PHASE_LABELS = Object.freeze({
   [LEAGUE_STATUS.OFFSEASON]: "OFFSEASON",
   [LEAGUE_STATUS.FINISHED]: "FINISHED",
   [LEAGUE_STATUS.CANCELLED]: "CANCELLED",
+  [LEAGUE_STATUS.ARCHIVED]: "ARCHIVED",
 });
 
 export function getLeagueStatusLabel(status) {

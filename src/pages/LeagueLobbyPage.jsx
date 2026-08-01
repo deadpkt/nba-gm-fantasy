@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import LeagueProgress from "../components/LeagueProgress";
+import LeagueActivityFeed from "../components/activity/LeagueActivityFeed";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueContracts from "../hooks/useLeagueContracts";
+import useLeagueActivity from "../hooks/useLeagueActivity";
 import { db } from "../lib/firebase";
 import { isLeagueTeamSeasonReady } from "../lib/leagueTeams";
 import { getOffseasonTeamPreparationState, normalizeOffseasonPreparation } from "../lib/offseasonPreparation";
@@ -13,28 +15,13 @@ import { getLeagueStatusLabel, LEAGUE_STATUS } from "../lib/leagueStatuses";
 import {
   getSeasonPresetLabel,
   normalizeSeasonConfig,
+  SUPPORTED_LEAGUE_SIZES,
 } from "../lib/seasonConfig";
 import { startNextSeason } from "../lib/seasonHistory";
 import { formatMoney } from "../lib/contracts";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
 import { getUserFriendlyError } from "../lib/clientErrors";
-
-function getLeaguePhaseMessage(status) {
-  switch (status) {
-    case LEAGUE_STATUS.LOBBY:
-      return "The league lobby is open. Fill every franchise slot and ready up before the draft phase.";
-    case LEAGUE_STATUS.DRAFTING:
-      return "The shared draft is active. Follow the draft room until every franchise completes its roster.";
-    case LEAGUE_STATUS.SEASON_READY:
-      return "Draft complete. Set your lineup and prepare for the season.";
-    case LEAGUE_STATUS.OFFSEASON:
-      return "The completed season is preserved. The league is now in offseason preparation.";
-    case LEAGUE_STATUS.CANCELLED:
-      return "This league has been cancelled.";
-    default:
-      return `League phase: ${getLeagueStatusLabel(status)}.`;
-  }
-}
+import "../leagueLobby.css";
 
 function LeagueLobbyPage() {
   const { leagueId } = useParams();
@@ -51,6 +38,8 @@ function LeagueLobbyPage() {
     startDraft,
     startSeason,
     leaveLeague,
+    leaveLeagueDynasty,
+    archiveLeague,
     cancelLeague,
   } = useLeague();
   const navigate = useNavigate();
@@ -65,10 +54,14 @@ function LeagueLobbyPage() {
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const observedPhase = useRef({ leagueId: null, status: null });
   const league = isActiveLeague ? activeLeague || inviteLeague : inviteLeague;
   const members = isActiveLeague ? activeMembers : inviteMembers;
   const isMember = Boolean(league?.memberIds?.includes(user.uid));
+  const activityState = useLeagueActivity(leagueId, isActiveLeague && isMember);
 
   useEffect(() => {
     if (!league) return;
@@ -93,6 +86,7 @@ function LeagueLobbyPage() {
     setResolvedRouteLeagueId(null);
     setInviteMembers([]);
     setError("");
+    setInviteCopied(false);
 
     if (isActiveLeague) {
       setResolvedRouteLeagueId(leagueId);
@@ -150,6 +144,15 @@ function LeagueLobbyPage() {
     );
   }
 
+  async function copyInvite() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/league/${leagueId}`);
+      setInviteCopied(true);
+    } catch {
+      setError("The invite link could not be copied. Copy it from the field instead.");
+    }
+  }
+
   const routeLeagueLoading = resolvedRouteLeagueId !== leagueId;
   if (
     (routeLeagueLoading && !(isActiveLeague && activeLeague)) ||
@@ -197,7 +200,8 @@ function LeagueLobbyPage() {
   const offseasonPreparation = normalizeOffseasonPreparation(league);
   const offseasonReadyTeams = teams.filter((team) => getOffseasonTeamPreparationState({ league, team, userId: team.ownerUid, contracts }).ready);
   const offseasonReadyCount = offseasonReadyTeams.length;
-  const allOffseasonTeamsReady = memberCount > 0 && offseasonReadyCount === memberCount && offseasonPreparation.readyMemberIds.length === memberCount;
+  const scheduleSizeReady = SUPPORTED_LEAGUE_SIZES.includes(memberCount);
+  const allOffseasonTeamsReady = scheduleSizeReady && offseasonReadyCount === memberCount && offseasonPreparation.readyMemberIds.length === memberCount;
   const allTeamsSeasonReady =
     memberCount > 0 &&
     seasonReadyCount === memberCount &&
@@ -210,6 +214,7 @@ function LeagueLobbyPage() {
     allTeamsSeasonReady;
   const canStartDraft =
     isCommissioner && lobbyOpen && memberConditionMet && readinessConditionMet;
+  const teamByOwner = new Map(teams.map((team) => [team.ownerUid, team]));
   const phaseSummary = (() => {
     switch (league.status) {
       case LEAGUE_STATUS.DRAFTING:
@@ -230,11 +235,25 @@ function LeagueLobbyPage() {
           value: "CANCELLED",
           detail: "This league is no longer active",
         };
+      case LEAGUE_STATUS.ARCHIVED:
+        return { label: "LEAGUE LIFECYCLE", value: "ARCHIVED", detail: "Read-only dynasty history" };
       case LEAGUE_STATUS.OFFSEASON:
         return {
           label: `OFFSEASON — PREPARING FOR SEASON ${offseasonPreparation.nextSeason}`,
           value: `${offseasonReadyCount}/${memberCount} READY`,
           detail: `Season ${league.offseason?.seasonCompleted || league.season} complete`,
+        };
+      case LEAGUE_STATUS.REGULAR_SEASON:
+        return {
+          label: "REGULAR SEASON",
+          value: league.seasonProgress?.currentRound ? `ROUND ${league.seasonProgress.currentRound}` : "SEASON ACTIVE",
+          detail: `${memberCount} active franchises`,
+        };
+      case LEAGUE_STATUS.PLAYOFFS:
+        return {
+          label: "POSTSEASON",
+          value: league.postseason?.status === "completed" ? "COMPLETE" : "PLAYOFFS ACTIVE",
+          detail: league.postseason?.champion?.teamName || `${memberCount} league franchises`,
         };
       default:
         return {
@@ -251,28 +270,33 @@ function LeagueLobbyPage() {
 
   return (
     <PageLayout>
-      <section className="page-hero league-hero">
-        <p className="section-label">PRIVATE LEAGUE / SEASON {league.season}</p>
+      <section className="page-hero league-hero league-command-header">
+        <p className="section-label">LEAGUE CONTROL ROOM</p>
         <h1>{league.name}<span>.</span></h1>
-        <p>{getLeaguePhaseMessage(league.status)}</p>
+        <div className="league-command-header__meta">
+          <span>Season {league.season}</span>
+          <b>{getLeagueStatusLabel(league.status)}</b>
+          <span>{memberCount}/{league.maxMembers} Teams</span>
+          <span>Commissioner: {commissioner?.displayName || "Loading"}</span>
+        </div>
       </section>
 
       {accessMessage && <p className="league-access-message" role="status">{accessMessage}</p>}
 
-      {isActiveLeague && isMember && <LeagueProgress contracts={contracts} />}
+      {isActiveLeague && isMember && <div className="league-primary-action"><LeagueProgress contracts={contracts} /></div>}
 
-      <section className="league-lobby league-dashboard-summary">
+      <section className={`league-lobby league-dashboard-summary ${!lobbyOpen ? "is-quiet" : ""}`}>
         <div className="league-code">
           <span>INVITE CODE</span><b>{league.inviteCode}</b><small>{inviteLink}</small>
+          {league.status !== LEAGUE_STATUS.ARCHIVED && <button type="button" onClick={copyInvite}>{inviteCopied ? "Copied" : "Copy Invite Link"}</button>}
         </div>
         <div className="league-status">
-          <span>LEAGUE STATUS</span><b className={`league-status-chip league-status-chip--${league.status}`}>{getLeagueStatusLabel(league.status)}</b>
-          <small>Season {league.season} / Commissioner: {commissioner?.displayName || "Loading"}</small>
-          <small>{getSeasonPresetLabel(seasonConfig.preset)} / {seasonConfig.gamesPerTeam} games per team</small>
-          <small>{rosterConfig.rosterSize} players / {rosterConfig.starterCount} starters / {rosterConfig.benchSize} bench</small>
+          <span>LEAGUE FORMAT</span><b>{getSeasonPresetLabel(seasonConfig.preset)}</b>
+          <small>{seasonConfig.gamesPerTeam} games per team</small>
+          <small>{rosterConfig.rosterSize} players · {rosterConfig.starterCount} starters · {rosterConfig.benchSize} bench</small>
         </div>
         <div className="league-next">
-          <span>{phaseSummary.label}</span><b>{phaseSummary.value}</b>
+          <span>FRANCHISE READINESS</span><b>{phaseSummary.value}</b>
           <small>{phaseSummary.detail}</small>
         </div>
       </section>
@@ -284,9 +308,9 @@ function LeagueLobbyPage() {
           </div>
           {members.map((member, index) => (
             <article key={member.id}>
-              <strong>{String(index + 1).padStart(2, "0")}</strong>
-              <span>{member.role === "commissioner" ? "COMMISSIONER" : "FRANCHISE OWNER"}</span>
-              <b><Link className="gm-profile-link" to={`/profile/${member.uid}`}>{member.displayName}</Link></b>
+              <strong className="franchise-list__avatar" aria-hidden="true">{member.displayName?.trim()?.charAt(0)?.toUpperCase() || String(index + 1)}</strong>
+              <span className="franchise-list__identity"><b><Link className="gm-profile-link" to={`/profile/${member.uid}`}>{member.displayName}</Link></b><small>{teamByOwner.get(member.uid)?.name || "Franchise pending"}{member.role === "commissioner" ? " · Commissioner" : ""}</small></span>
+              <span className="franchise-list__roster">ROSTER <b>{teamByOwner.get(member.uid)?.roster?.length || 0}/{rosterConfig.rosterSize}</b></span>
               <i className={
                 (league.status === LEAGUE_STATUS.SEASON_READY
                   ? seasonReadyTeams.some((team) => team.ownerUid === member.uid)
@@ -312,11 +336,13 @@ function LeagueLobbyPage() {
           ))}
           {Array.from({ length: Math.max(0, league.maxMembers - memberCount) }).map((_, index) => (
             <article className="franchise-list__empty" key={`empty-${index}`}>
-              <strong>--</strong><span>OPEN FRANCHISE</span><b>Waiting for invite</b><i>OPEN</i>
+              <strong className="franchise-list__avatar">+</strong><span className="franchise-list__identity"><b>Open franchise</b><small>Waiting for invite</small></span><span className="franchise-list__roster">ROSTER <b>0/{rosterConfig.rosterSize}</b></span><i>OPEN</i>
             </article>
           ))}
         </section>
       )}
+
+      {isActiveLeague && isMember && <LeagueActivityFeed {...activityState} />}
 
       {isMember && lobbyOpen && (
         <section className="league-control-panel" id="league-controls">
@@ -367,54 +393,22 @@ function LeagueLobbyPage() {
               <p className="section-label">MEMBER CONTROLS</p>
               <h2>Leave league</h2>
               <p>Available only in the lobby and before acquiring roster players.</p>
-              <button
-                type="button"
-                className="is-danger"
-                disabled={Boolean(busyAction)}
-                onClick={() => run("leave", leaveLeague, () => navigate("/league", { replace: true }))}
-              >
-                {busyAction === "leave" ? "Leaving..." : "Leave League"}
-              </button>
+              {!confirmLeave ? <button type="button" className="is-danger" disabled={Boolean(busyAction)} onClick={() => setConfirmLeave(true)}>Leave League</button> : <div className="league-lifecycle-confirm" role="alertdialog" aria-label="Confirm league departure"><p>You will leave this active league and your current franchise will be removed. This cannot be undone automatically.</p><button type="button" className="is-danger" disabled={Boolean(busyAction)} onClick={() => run("leave", leaveLeague, () => navigate("/league", { replace: true }))}>{busyAction === "leave" ? "Leaving..." : "Confirm Leave"}</button><button type="button" disabled={Boolean(busyAction)} onClick={() => setConfirmLeave(false)}>Keep Membership</button></div>}
             </div>
           )}
         </section>
       )}
 
-      {league.status === LEAGUE_STATUS.DRAFTING && isMember && (
-        <section className="league-phase-notice">
-          <p className="section-label">DRAFT PHASE ACTIVE</p>
-          <h2>The shared league draft is underway.</h2>
-          <p>Continue drafting until every franchise has completed its roster.</p>
-          <Link to="/league/draft">Open Draft Room</Link>
-        </section>
-      )}
-
-      {league.status === LEAGUE_STATUS.SEASON_READY && isMember && (
-        <section className="league-control-panel" id="league-controls">
-          <div>
-            <p className="section-label">DRAFT COMPLETE / TEAM PREPARATION</p>
-            <h2>{seasonReadyCount}/{memberCount} franchises ready</h2>
-            <p>Each franchise needs {rosterConfig.rosterSize} drafted players and one unique, eligible starter assigned at PG, SG, SF, PF, and C.</p>
-            <Link to="/my-team">Open My Team</Link>
+      {league.status === LEAGUE_STATUS.SEASON_READY && isMember && isCommissioner && (
+        <section className="league-control-panel league-control-panel--single" id="league-controls">
+          <div className="league-commissioner-controls">
+            <p className="section-label">COMMISSIONER</p>
+            <h2>{canStartSeason ? "Season can start" : "Waiting on lineups"}</h2>
+            <p>{seasonReadyCount}/{memberCount} franchises ready.</p>
+            <button type="button" disabled={!canStartSeason || Boolean(busyAction)} onClick={() => run("season", startSeason)}>
+              {busyAction === "season" ? "Starting..." : "Start Season"}
+            </button>
           </div>
-          {isCommissioner && (
-            <div className="league-commissioner-controls">
-              <p className="section-label">COMMISSIONER CONTROLS</p>
-              <h2>{canStartSeason ? "Season can start" : "Waiting on lineups"}</h2>
-              <ul>
-                <li className={seasonReadyCount === memberCount ? "is-complete" : ""}>
-                  Franchises ready: {seasonReadyCount}/{memberCount}
-                </li>
-              </ul>
-              <button
-                type="button"
-                disabled={!canStartSeason || Boolean(busyAction)}
-                onClick={() => run("season", startSeason)}
-              >
-                {busyAction === "season" ? "Starting..." : "Start Season"}
-              </button>
-            </div>
-          )}
         </section>
       )}
 
@@ -425,16 +419,22 @@ function LeagueLobbyPage() {
           <p>Runner-up: {league.postseason?.runnerUp?.teamName}</p>
           <p>The league has entered offseason. Season {league.offseason?.nextSeason || league.season + 1} preparation will happen here.</p>
           <p>Franchises ready: {offseasonReadyCount} / {memberCount}</p>
+          {!scheduleSizeReady && <p role="status">The next season requires 2, 4, 6, or 8 remaining franchises.</p>}
           <p className="offseason-finance-summary"><b>CONTRACTS</b> {contractsInitialized ? contractValidation.valid ? "READY" : "REVIEW REQUIRED" : "INITIALIZATION REQUIRED"} <span>PAYROLL {contractsInitialized ? `${formatMoney(payroll)} / ${formatMoney(salaryCap)}` : "—"}</span></p>
-          <Link to="/contracts">Review Team Contracts</Link>
-          <Link to="/league/history">Open Season History</Link>
           {isCommissioner ? (
             <button className="button-primary" type="button" disabled={!allOffseasonTeamsReady || Boolean(busyAction)} onClick={() => run("next-season", () => startNextSeason({ leagueId }))}>
               {busyAction === "next-season" ? "Preparing Next Season..." : `Start Season ${offseasonPreparation.nextSeason}`}
             </button>
           ) : <small>{allOffseasonTeamsReady ? `All franchises are ready. Waiting for the commissioner to start Season ${offseasonPreparation.nextSeason}.` : "Waiting for the remaining franchises."}</small>}
+          <div className="league-lifecycle-management">
+            <div><p className="section-label">LEAGUE MANAGEMENT</p><strong>{isCommissioner ? "Dynasty controls" : "Membership"}</strong></div>
+            {!isCommissioner && <div className="league-lifecycle-actions"><Link className="button-secondary" to="/my-team">Continue Preparation</Link>{!confirmLeave ? <button className="button-secondary" type="button" disabled={Boolean(busyAction)} onClick={() => setConfirmLeave(true)}>Leave League</button> : <div className="league-lifecycle-confirm" role="alertdialog" aria-label="Confirm league departure"><p>You will leave this active league. Your current roster, ownership, and contracts will be released. Completed season history remains. This cannot be undone automatically.</p><button className="is-danger" type="button" disabled={Boolean(busyAction)} onClick={() => run("dynasty-leave", leaveLeagueDynasty, () => navigate("/league", { replace: true }))}>{busyAction === "dynasty-leave" ? "Leaving..." : "Release Franchise & Leave"}</button><button type="button" disabled={Boolean(busyAction)} onClick={() => setConfirmLeave(false)}>Keep Membership</button></div>}</div>}
+            {isCommissioner && (!confirmArchive ? <button className="button-secondary" type="button" disabled={Boolean(busyAction)} onClick={() => setConfirmArchive(true)}>Archive League</button> : <div className="league-lifecycle-confirm" role="alertdialog" aria-label="Confirm league archive"><p>This league will become permanently read-only. No future season can start; history remains, and members can create or join another league. Archive is not deletion and cannot currently be undone.</p><button className="is-danger" type="button" disabled={Boolean(busyAction)} onClick={() => run("archive", archiveLeague, () => navigate(`/league/${leagueId}`, { replace: true }))}>{busyAction === "archive" ? "Archiving..." : "Archive League"}</button><button type="button" disabled={Boolean(busyAction)} onClick={() => setConfirmArchive(false)}>Keep League Active</button></div>)}
+          </div>
         </section>
       )}
+
+      {league.status === LEAGUE_STATUS.ARCHIVED && isMember && <section className="league-phase-notice league-phase-notice--archived"><p className="section-label">ARCHIVED DYNASTY</p><h2>{league.name} is read-only.</h2><p>No games, roster moves, or future seasons can begin. Completed championships and season records remain preserved.</p><Link className="button-secondary" to={`/league/${leagueId}/history`}>View Season History</Link></section>}
 
       {lobbyOpen && !isMember && (
         <section className="league-join">
@@ -442,7 +442,7 @@ function LeagueLobbyPage() {
           <button onClick={join} disabled={Boolean(busyAction)}>{busyAction === "join" ? "Joining..." : "Join this league"}</button>
         </section>
       )}
-      {!isActiveLeague && isMember && (
+      {!isActiveLeague && isMember && league.status !== LEAGUE_STATUS.ARCHIVED && (
         <section className="league-join">
           <p>You are already a member of this league. Open it as your active league to use its member controls.</p>
           <button

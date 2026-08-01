@@ -2,20 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
-import { getHeaderNavigation } from "../lib/headerNavigation";
+import { getHeaderNavigation, getPrimaryNavigationItems } from "../lib/headerNavigation";
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 import FullCourtLogo from "./brand/FullCourtLogo";
+import MobileNavigationDrawer from "./MobileNavigationDrawer";
+import NotificationBell from "./notifications/NotificationBell";
+import useAdminClaim from "../hooks/useAdminClaim";
+import useLatestUpdate from "../hooks/useLatestUpdate";
 import "./brand/brand.css";
 import "./navigation.css";
 
 function Header() {
-  const { activeLeagueId, activeLeague } = useLeague();
+  const { activeLeagueId, activeLeague, leagueLoading } = useLeague();
   const { user, logout } = useAuth();
   const headerRef = useRef(null);
   const location = useLocation();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leagueMenuOpen, setLeagueMenuOpen] = useState(false);
+  const { admin } = useAdminClaim();
+  const latestUpdate = useLatestUpdate();
 
   useEffect(() => {
     function closeOutside(event) {
@@ -29,6 +35,10 @@ function Header() {
     return () => document.removeEventListener("mousedown", closeOutside);
   }, []);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
   const closeNavigation = () => {
     setMobileMenuOpen(false);
     setLeagueMenuOpen(false);
@@ -36,6 +46,7 @@ function Header() {
   const userName = user?.displayName || user?.email?.split("@")[0] || "GM";
   const initial = userName.slice(0, 1).toUpperCase();
   const items = getHeaderNavigation(activeLeagueId, activeLeague?.status);
+  const mobileItems = getPrimaryNavigationItems({ activeLeagueId, status: activeLeague?.status, loading: leagueLoading });
   const hasActiveLeague = Boolean(
     activeLeagueId && activeLeague?.status !== LEAGUE_STATUS.CANCELLED,
   );
@@ -80,6 +91,7 @@ function Header() {
           type="button"
           aria-label="Toggle navigation menu"
           aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-navigation"
           onClick={() => {
             setMobileMenuOpen((open) => !open);
             setProfileMenuOpen(false);
@@ -159,6 +171,11 @@ function Header() {
         </nav>
 
         <div className="user-nav">
+          <NotificationBell onOpen={() => {
+            setProfileMenuOpen(false);
+            setMobileMenuOpen(false);
+            setLeagueMenuOpen(false);
+          }} />
           <div className="profile-menu">
             <button
               className="header-profile"
@@ -217,6 +234,14 @@ function Header() {
                     Profile
                   </NavLink>
                   <NavLink
+                    to="/updates"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    What’s New {latestUpdate.unseen && <small className="updates-new-badge">New</small>}
+                  </NavLink>
+                  {admin && <NavLink to="/admin/dev-log" role="menuitem" onClick={() => setProfileMenuOpen(false)}>Dev Log Admin</NavLink>}
+                  <NavLink
                     to="/settings"
                     role="menuitem"
                     onClick={() => setProfileMenuOpen(false)}
@@ -237,6 +262,7 @@ function Header() {
           </div>
         </div>
       </div>
+      <MobileNavigationDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} onLogout={logout} items={mobileItems} navigationLoading={leagueLoading} userName={userName} updatesUnseen={latestUpdate.unseen} admin={admin} />
     </header>
   );
 }

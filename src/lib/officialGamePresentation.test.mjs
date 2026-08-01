@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAuthoritativePresentationFrame, getPresentationFrame, isOfficialGameFinalVisible } from "./officialGamePresentation.js";
+import { formatGameEvent, getAuthoritativePresentationFrame, getPresentationFrame, getRecentScoringRun, isOfficialGameFinalVisible } from "./officialGamePresentation.js";
 
 const liveGame = {
   status: "in_progress",
@@ -34,4 +34,24 @@ test("two viewers and a refreshed viewer share the persisted authoritative posit
   const refreshed = getAuthoritativePresentationFrame({ ...liveGame }, 21_000);
   assert.deepEqual(viewerB, viewerA);
   assert.deepEqual(refreshed, viewerA);
+});
+
+test("gamecast formatter uses authoritative copy and safe fallbacks", () => {
+  const game = { homeUid: "home", awayUid: "away", homeTeamName: "Home", awayTeamName: "Away" };
+  const event = { eventType: "made_3pt", gameClock: "04:21", quarter: 2, offenseUid: "home", pointsScored: 3, text: "Player makes a three." };
+  assert.deepEqual(formatGameEvent(event, { game }), {
+    title: "Player makes a three.", detail: "Home", clock: "04:21", phase: "Q2", type: "score", scoreDelta: 3, teamUid: "home", playerName: null,
+  });
+  assert.equal(formatGameEvent({ eventType: "turnover", quarter: 1 }, { game }).title, "Turnover");
+});
+
+test("recent run is derived only from visible scoring events", () => {
+  const game = { homeUid: "home", awayUid: "away" };
+  const events = [
+    { offenseUid: "home", pointsScored: 2 },
+    { offenseUid: "away", pointsScored: 3 },
+    { offenseUid: "home", pointsScored: 0 },
+    { offenseUid: "home", pointsScored: 1 },
+  ];
+  assert.deepEqual(getRecentScoringRun(events, game), { home: 3, away: 3 });
 });

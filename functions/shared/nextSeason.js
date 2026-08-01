@@ -1,5 +1,6 @@
 import { validateStartingLineup } from "./lineup.js";
 import { normalizeRosterConfig } from "./rosterConfig.js";
+import { resizeSeasonConfig } from "./leagueLifecycle.js";
 
 function validTeam(team, uid, league) {
   return (team?.ownerUid || team?.id) === uid && validateStartingLineup(team, normalizeRosterConfig(league).rosterSize).valid;
@@ -20,13 +21,16 @@ export function buildNextSeasonTransition({ league, history, teams, transitioned
   if (history?.season !== league.season || history.status !== "completed") throw new Error("The completed-season history is unavailable.");
   const members = Array.isArray(league.memberIds) ? league.memberIds : [];
   const readyIds = Array.isArray(offseason.readyMemberIds) ? offseason.readyMemberIds : [];
-  if (members.length !== league.maxMembers || readyIds.length !== members.length || !members.every((uid) => readyIds.includes(uid))) throw new Error("Every current franchise must confirm readiness for the next season.");
+  if (readyIds.length !== members.length || !members.every((uid) => readyIds.includes(uid))) throw new Error("Every current franchise must confirm readiness for the next season.");
+  const seasonConfig = resizeSeasonConfig(league.seasonConfig, members.length);
   const teamMap = new Map(teams.map((team) => [team.id || team.ownerUid, team]));
   if (teamMap.size !== members.length || members.some((uid) => !validTeam(teamMap.get(uid), uid, league))) throw new Error("Every franchise needs a complete configured roster and valid Starting Five.");
   return {
     targetSeason,
     leagueUpdate: {
       season: targetSeason,
+      maxMembers: members.length,
+      seasonConfig,
       status: "season_ready",
       seasonReadyMemberIds: [...members],
       seasonTransition: { fromSeason: league.season, targetSeason, offseasonStartedAt: offseason.startedAt, completedAt: transitionedAt },

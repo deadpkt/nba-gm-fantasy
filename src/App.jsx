@@ -5,6 +5,7 @@ import ProfileRouteGuard from "./components/ProfileRouteGuard";
 import { LeaguePhaseRoute } from "./components/LeagueRouteGuard";
 import { LEAGUE_STATUS } from "./lib/leagueStatuses";
 import { RouteLoading } from "./components/brand/AppLoadingScreen";
+import AdminRoute from "./components/AdminRoute";
 import "./App.css";
 import "./typography.css";
 
@@ -30,6 +31,8 @@ const SeasonHistoryPage = lazy(() => import("./pages/SeasonHistoryPage"));
 const SignUpPage = lazy(() => import("./pages/SignUpPage"));
 const StandingsPage = lazy(() => import("./pages/StandingsPage"));
 const TradeCenterPage = lazy(() => import("./pages/TradeCenterPage"));
+const UpdatesPage = lazy(() => import("./pages/UpdatesPage"));
+const AdminDevLogPage = lazy(() => import("./pages/AdminDevLogPage"));
 
 const protectedPage = (page) => <ProtectedRoute>{page}</ProtectedRoute>;
 const leaguePhasePage = (page, statuses) =>
@@ -51,13 +54,14 @@ function App() {
     <Suspense fallback={<RouteLoading />}><Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/updates" element={<UpdatesPage />} />
       <Route path="/" element={protectedPage(<HomePage />)} />
       <Route path="/my-team" element={leaguePhasePage(<MyTeamPage />, TEAM_PHASES)} />
       <Route path="/activity" element={leaguePhasePage(<ActivityPage />, FUTURE_SEASON_FEATURE_PHASES)} />
       <Route path="/achievements" element={leaguePhasePage(<AchievementsPage />, FUTURE_SEASON_FEATURE_PHASES)} />
       <Route path="/free-agency" element={leaguePhasePage(<FreeAgencyPage />, FREE_AGENCY_PHASES)} />
       <Route path="/contracts" element={leaguePhasePage(<ContractsPage />, CONTRACT_PHASES)} />
-      <Route path="/notifications" element={leaguePhasePage(<NotificationsPage />, FUTURE_SEASON_FEATURE_PHASES)} />
+      <Route path="/notifications" element={protectedPage(<NotificationsPage />)} />
       <Route path="/awards" element={leaguePhasePage(<AwardsPage />, FUTURE_SEASON_FEATURE_PHASES)} />
       <Route path="/league" element={protectedPage(<LeaguesPage />)} />
       <Route path="/league/draft" element={leaguePhasePage(<DraftPage />, [LEAGUE_STATUS.DRAFTING])} />
@@ -69,10 +73,12 @@ function App() {
       <Route path="/standings" element={leaguePhasePage(<StandingsPage />, [LEAGUE_STATUS.REGULAR_SEASON, LEAGUE_STATUS.PLAYOFFS])} />
       <Route path="/playoffs" element={leaguePhasePage(<PlayoffsPage />, [LEAGUE_STATUS.PLAYOFFS])} />
       <Route path="/league/history" element={leaguePhasePage(<SeasonHistoryPage />, [LEAGUE_STATUS.SEASON_READY, LEAGUE_STATUS.REGULAR_SEASON, LEAGUE_STATUS.PLAYOFFS, LEAGUE_STATUS.OFFSEASON])} />
+      <Route path="/league/:leagueId/history" element={protectedPage(<SeasonHistoryPage />)} />
       <Route path="/trade-center" element={leaguePhasePage(<TradeCenterPage />, TRADE_PHASES)} />
       <Route path="/profile" element={<ProfileRouteGuard><ProfilePage /></ProfileRouteGuard>} />
       <Route path="/profile/:uid" element={<ProfileRouteGuard><PublicProfilePage /></ProfileRouteGuard>} />
       <Route path="/settings" element={protectedPage(<SettingsPage />)} />
+      <Route path="/admin/dev-log" element={protectedPage(<AdminRoute><AdminDevLogPage /></AdminRoute>)} />
       <Route path="/draft" element={<Navigate to="/league/draft" replace />} />
       <Route path="/leagues" element={<Navigate to="/league" replace />} />
       <Route path="*" element={<NotFoundPage />} />

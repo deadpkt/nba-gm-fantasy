@@ -17,6 +17,7 @@ import {
   socialEmptyMessage,
 } from "../../lib/socialUi";
 import { getUserFriendlyError } from "../../lib/clientErrors";
+import UiIcon from "../UiIcon";
 
 function SocialUserRow({ profile, viewerUid, onNavigate }) {
   const [following, setFollowing] = useState(false);
@@ -185,7 +186,7 @@ function SocialListModal({ uid, type: initialTab, counts = {}, onClose }) {
             onClick={onClose}
             aria-label="Close social connections"
           >
-            ×
+            <UiIcon name="close" size={18} />
           </button>
         </header>
         <div
@@ -208,7 +209,7 @@ function SocialListModal({ uid, type: initialTab, counts = {}, onClose }) {
           ))}
         </div>
         <label className="social-modal__search">
-          <span aria-hidden="true">⌕</span>
+          <UiIcon name="search" size={17} />
           <input
             type="search"
             value={search}

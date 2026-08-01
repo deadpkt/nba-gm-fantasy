@@ -12,7 +12,6 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { auth, db, firebaseEnabled } from "../lib/firebase";
-import { reportClientError } from "../lib/clientErrors";
 
 export const AuthContext = createContext(null);
 
@@ -88,23 +87,27 @@ export function AuthProvider({ children }) {
   }
 
   async function signUp({ displayName, email, password }) {
+    await configureLocalPersistence();
     const credential = await createUserWithEmailAndPassword(
       auth,
-      email,
+      email.trim(),
       password,
     );
-    await updateProfile(credential.user, { displayName });
-    void saveUserProfile(credential.user).catch((error) => reportClientError("Profile setup", error));
+    await updateProfile(credential.user, { displayName: displayName.trim() });
+    await saveUserProfile(credential.user);
   }
 
   async function login({ email, password }) {
-    await signInWithEmailAndPassword(auth, email, password);
+    await configureLocalPersistence();
+    const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+    await saveUserProfile(credential.user);
   }
   async function signInWithGoogle() {
+    await configureLocalPersistence();
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     const credential = await signInWithPopup(auth, provider);
-    void saveUserProfile(credential.user).catch((error) => reportClientError("Profile sync", error));
+    await saveUserProfile(credential.user);
   }
   async function logout() {
     await signOut(auth);

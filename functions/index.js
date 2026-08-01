@@ -2,7 +2,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getFunctions } from "firebase-admin/functions";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { defineSecret } from "firebase-functions/params";
 import {
@@ -21,6 +21,7 @@ import { buildChampionship, buildFinalMatchup, buildPlayoffInitialization } from
 import { buildPresentationWindow, isPresentationDeadlineReached } from "./shared/presentationTiming.js";
 import { buildOffseasonTransition, buildSeasonHistory, seasonHistoryMatches } from "./shared/seasonHistory.js";
 import { buildNextSeasonTransition, isNextSeasonCommissioner, isNextSeasonTransitionRetry } from "./shared/nextSeason.js";
+import { buildArchiveUpdate, buildDepartingMemberUpdate, canArchiveLeague, canLeaveLeagueDynasty } from "./shared/leagueLifecycle.js";
 import { ageContractForSeason, initializeMissingContracts, validateTeamContracts } from "./shared/contracts.js";
 import { buildFreeAgentSigning, buildPlayerRelease } from "./shared/freeAgency.js";
 import { canBuildLegalStartingFive, getDraftRosterFeasibility } from "./shared/lineupFeasibility.js";
@@ -29,11 +30,91 @@ import { buildDraftTurnWindow, draftTurnIdentity, draftTurnMatches, isDraftTurnE
 import { syncNbaCatalog as runNbaCatalogSync } from "./lib/syncNbaCatalog.js";
 import { normalizeRosterConfig } from "./shared/rosterConfig.js";
 import { buildFollowMutation, buildPublicProfile, validateFollowTarget } from "./shared/social.js";
+import { createTrustedNotification, createTrustedNotifications, markTrustedNotificationRead, notificationEventId } from "./lib/notifications.js";
+import { activityEventId, createTrustedLeagueActivity } from "./lib/leagueActivity.js";
+import { devLogIdForVersion, newestPublished, normalizeDevLog } from "./shared/devLogs.js";
 
 if (!getApps().length) initializeApp();
 
 const db = getFirestore();
 const balldontlieApiKey = defineSecret("BALLDONTLIE_API_KEY");
+
+function requireAdmin(request) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  if (request.auth.token.admin !== true) throw new HttpsError("permission-denied", "You do not have permission to manage Dev Logs.");
+}
+
+export const saveDevLogDraft = onCall(async (request) => {
+  requireAdmin(request);
+  let content;
+  try { content = normalizeDevLog(request.data || {}); } catch (error) { throw new HttpsError("invalid-argument", error.message); }
+  const id = devLogIdForVersion(content.version);
+  const ref = db.doc(`devLogs/${id}`);
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (snapshot.exists && request.data?.id !== id) {
+      throw new HttpsError("already-exists", "A Dev Log with this version already exists.");
+    }
+    if (snapshot.exists && snapshot.data().status === "published") throw new HttpsError("failed-precondition", "Unpublish this update before editing it.");
+    const now = Timestamp.now();
+    if (snapshot.exists) transaction.update(ref, { ...content, status: "draft", updatedAt: now });
+    else transaction.create(ref, { ...content, status: "draft", publishedAt: null, createdAt: now, updatedAt: now, createdBy: request.auth.uid });
+    return { id, status: "draft" };
+  });
+});
+
+export const setDevLogPublication = onCall(async (request) => {
+  requireAdmin(request);
+  const { id, published } = request.data || {};
+  if (typeof id !== "string" || typeof published !== "boolean") throw new HttpsError("invalid-argument", "Update identity and publication state are required.");
+  const ref = db.doc(`devLogs/${id}`);
+  const metaRef = db.doc("appMeta/current");
+  return db.runTransaction(async (transaction) => {
+    const [snapshot, allLogs] = await Promise.all([transaction.get(ref), transaction.get(db.collection("devLogs"))]);
+    if (!snapshot.exists) throw new HttpsError("not-found", "Dev Log unavailable.");
+    const current = snapshot.data();
+    if (published && current.status === "published") return { id, status: "published", alreadyPublished: true };
+    if (!published && current.status === "draft") return { id, status: "draft", alreadyUnpublished: true };
+    const now = Timestamp.now();
+    if (published) {
+      let content;
+      try { content = normalizeDevLog(current, { publishing: true }); } catch (error) { throw new HttpsError("failed-precondition", error.message); }
+      transaction.update(ref, { ...content, status: "published", publishedAt: now, updatedAt: now });
+      transaction.set(metaRef, { latestPublishedVersion: content.version, latestDevLogId: id, latestPublishedAt: now });
+      return { id, status: "published" };
+    }
+    transaction.update(ref, { status: "draft", publishedAt: null, updatedAt: now });
+    const latest = newestPublished(allLogs.docs.filter((item) => item.id !== id).map((item) => ({ id: item.id, ...item.data() })));
+    if (latest) transaction.set(metaRef, { latestPublishedVersion: latest.version, latestDevLogId: latest.id, latestPublishedAt: latest.publishedAt });
+    else transaction.delete(metaRef);
+    return { id, status: "draft" };
+  });
+});
+
+export const deleteDevLog = onCall(async (request) => {
+  requireAdmin(request);
+  const id = request.data?.id;
+  if (typeof id !== "string") throw new HttpsError("invalid-argument", "An update identity is required.");
+  const ref = db.doc(`devLogs/${id}`);
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) return { deleted: false, alreadyDeleted: true };
+    if (snapshot.data().status === "published") throw new HttpsError("failed-precondition", "Unpublish this update before deleting it.");
+    transaction.delete(ref);
+    return { deleted: true };
+  });
+});
+
+export const markNotificationRead = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  const notificationId = request.data?.notificationId;
+  if (typeof notificationId !== "string" || !/^[A-Za-z0-9_-]{1,150}$/.test(notificationId)) {
+    throw new HttpsError("invalid-argument", "A valid notification ID is required.");
+  }
+  const result = await markTrustedNotificationRead(db, request.auth.uid, notificationId);
+  if (!result.found) throw new HttpsError("not-found", "Notification unavailable.");
+  return { read: true, alreadyRead: !result.changed };
+});
 
 export const ensurePublicProfile = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
@@ -63,7 +144,7 @@ async function mutateFollow(request, following) {
   const targetProfileRef = db.doc(`publicProfiles/${targetUid}`);
   const followingRef = callerProfileRef.collection("following").doc(targetUid);
   const followerRef = targetProfileRef.collection("followers").doc(callerUid);
-  return db.runTransaction(async (transaction) => {
+  const result = await db.runTransaction(async (transaction) => {
     const [callerUser, targetUser, callerPublic, targetPublic, followingEdge, followerEdge] = await Promise.all([
       transaction.get(callerUserRef), transaction.get(targetUserRef), transaction.get(callerProfileRef),
       transaction.get(targetProfileRef), transaction.get(followingRef), transaction.get(followerRef),
@@ -71,8 +152,9 @@ async function mutateFollow(request, following) {
     if (!callerUser.exists) throw new HttpsError("failed-precondition", "Your profile is unavailable.");
     if (!targetUser.exists) throw new HttpsError("not-found", "Profile unavailable.");
     const mutation = buildFollowMutation({ callerProfile: callerPublic.data(), targetProfile: targetPublic.data(), followingEdgeExists: followingEdge.exists, followerEdgeExists: followerEdge.exists, desiredFollowing: following });
+    const callerDisplayName = callerPublic.data()?.displayName || callerUser.data()?.displayName || "A GM";
     if (!mutation.changed) {
-      return { following, idempotent: true };
+      return { following, idempotent: true, callerDisplayName, followEventAtMs: followingEdge.data()?.createdAt?.toMillis?.() || null };
     }
     const now = Timestamp.now();
     const callerProfile = buildPublicProfile(callerUid, callerUser.data(), callerPublic.data() || {}, now);
@@ -87,8 +169,25 @@ async function mutateFollow(request, following) {
       transaction.delete(followingRef);
       transaction.delete(followerRef);
     }
-    return { following, idempotent: false, ...counts };
+    return { following, idempotent: false, callerDisplayName, followEventAtMs: following ? now.toMillis() : null, ...counts };
   });
+  const { callerDisplayName, followEventAtMs, ...publicResult } = result;
+  if (following) {
+    try {
+      await createTrustedNotification(db, targetUid, {
+        id: notificationEventId("follow", callerUid, followEventAtMs || "existing"),
+        type: "follow",
+        actorUid: callerUid,
+        metadata: {
+          actorName: callerDisplayName || request.auth.token.name || "A GM",
+          route: `/profile/${callerUid}`,
+        },
+      });
+    } catch (error) {
+      console.error("Follow notification delivery failed.", { targetUid, callerUid, error: error.message });
+    }
+  }
+  return publicResult;
 }
 
 export const followUser = onCall((request) => mutateFollow(request, true));
@@ -246,6 +345,76 @@ export const initializeDraftPickTimer = onDocumentCreated("leagues/{leagueId}/dr
     const now = Timestamp.now();
     const window = buildDraftTurnWindow(now.toMillis());
     transaction.update(draftRef, { pickStartedAt: now, pickDeadlineAt: Timestamp.fromMillis(window.pickDeadlineAtMs), updatedAt: now });
+  });
+});
+
+async function notifyDraftTurn(leagueId, draft) {
+  if (draft?.status !== "active" || !draft.currentDrafterUid || !Number.isInteger(draft.currentPickNumber)) return;
+  const leagueSnapshot = await db.doc(`leagues/${leagueId}`).get();
+  if (!leagueSnapshot.exists || leagueSnapshot.data().status !== "drafting") return;
+  const league = leagueSnapshot.data();
+  await createTrustedNotification(db, draft.currentDrafterUid, {
+    id: notificationEventId("draft", leagueId, league.season || 1, draft.currentPickNumber),
+    type: "draft_turn",
+    actorUid: null,
+    metadata: {
+      leagueId,
+      leagueName: league.name || "Your league",
+      season: league.season || 1,
+      round: draft.currentRound,
+      pickNumber: draft.currentPickNumber,
+      route: "/league/draft",
+    },
+  });
+}
+
+export const produceInitialDraftTurnNotification = onDocumentCreated({ document: "leagues/{leagueId}/draft/state", retry: true }, async (event) => {
+  await notifyDraftTurn(event.params.leagueId, event.data?.data());
+});
+
+export const produceDraftTurnNotification = onDocumentUpdated({ document: "leagues/{leagueId}/draft/state", retry: true }, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!after || (before?.currentPickNumber === after.currentPickNumber && before?.currentDrafterUid === after.currentDrafterUid)) return;
+  await notifyDraftTurn(event.params.leagueId, after);
+});
+
+export const produceLeagueMemberActivity = onDocumentCreated({ document: "leagues/{leagueId}/members/{memberUid}", retry: true }, async (event) => {
+  const member = event.data?.data();
+  if (!member) return;
+  const { leagueId, memberUid } = event.params;
+  const createdLeague = member.role === "commissioner";
+  await createTrustedLeagueActivity(db, leagueId, {
+    id: activityEventId(createdLeague ? "league-created" : "member-joined", memberUid),
+    type: createdLeague ? "league_created" : "member_joined",
+    actorUid: memberUid,
+    createdAt: member.joinedAt || null,
+    metadata: { actorName: member.displayName || "A GM" },
+  });
+});
+
+export const produceDraftPickActivity = onDocumentCreated({ document: "leagues/{leagueId}/draft/state/picks/{pickId}", retry: true }, async (event) => {
+  const pick = event.data?.data();
+  if (!pick) return;
+  const { leagueId } = event.params;
+  const [member, team] = await Promise.all([
+    db.doc(`leagues/${leagueId}/members/${pick.ownerUid}`).get(),
+    db.doc(`leagues/${leagueId}/teams/${pick.ownerUid}`).get(),
+  ]);
+  await createTrustedLeagueActivity(db, leagueId, {
+    id: activityEventId("draft-pick", pick.overallPick),
+    type: "player_drafted",
+    actorUid: pick.ownerUid,
+    createdAt: pick.pickedAt || null,
+    targetUid: null,
+    metadata: {
+      actorName: member.data()?.displayName || team.data()?.name || "A GM",
+      teamName: team.data()?.name || null,
+      playerId: String(pick.playerId),
+      playerName: pick.player?.name || "a player",
+      overallPick: pick.overallPick,
+      round: pick.round,
+    },
   });
 });
 
@@ -811,6 +980,157 @@ export const finalizeOfficialGameTask = onTaskDispatched(
   },
 );
 
+export const produceOfficialGameResultNotifications = onDocumentUpdated({ document: "leagues/{leagueId}/games/{gameId}", retry: true }, async (event) => {
+  const before = event.data?.before.data();
+  const game = event.data?.after.data();
+  if (!game || before?.status === "completed" || game.status !== "completed" || !game.result?.winnerUid || !game.result?.loserUid || !game.presentationCompletedAt) return;
+  const { leagueId, gameId } = event.params;
+  const score = `${game.result.homeScore}-${game.result.awayScore}`;
+  await createTrustedNotifications(db, [game.homeUid, game.awayUid], (uid) => {
+    const won = uid === game.result.winnerUid;
+    const opponentUid = uid === game.homeUid ? game.awayUid : game.homeUid;
+    const opponentName = uid === game.homeUid ? game.awayTeamName : game.homeTeamName;
+    return {
+      id: notificationEventId("game-result", leagueId, gameId),
+      type: "game_result",
+      actorUid: opponentUid,
+      metadata: {
+        leagueId,
+        gameId,
+        season: game.season,
+        round: game.round || null,
+        stage: game.stage || "regular_season",
+        outcome: won ? "win" : "loss",
+        opponentName: opponentName || "your opponent",
+        score,
+        route: "/games",
+      },
+    };
+  });
+});
+
+export const produceLeagueLifecycleNotifications = onDocumentUpdated({ document: "leagues/{leagueId}", retry: true }, async (event) => {
+  const before = event.data?.before.data();
+  const league = event.data?.after.data();
+  if (!before || !league) return;
+  const { leagueId } = event.params;
+  const jobs = [];
+  const beforeProgress = before.seasonProgress;
+  const progress = league.seasonProgress;
+  let readyRound = null;
+  if (before.status !== "regular_season" && league.status === "regular_season" && progress?.roundStatus === ROUND_STATUS.PENDING) readyRound = progress.currentRound;
+  else if (beforeProgress?.roundStatus !== ROUND_STATUS.COMPLETED && progress?.roundStatus === ROUND_STATUS.COMPLETED && progress.currentRound < progress.totalRounds) readyRound = progress.currentRound + 1;
+  if (readyRound) {
+    jobs.push(createTrustedNotifications(db, league.memberIds, {
+      id: notificationEventId("round-ready", leagueId, league.season, readyRound),
+      type: "round_ready",
+      actorUid: null,
+      metadata: { leagueId, leagueName: league.name || "Your league", season: league.season, round: readyRound, route: "/games" },
+    }));
+  }
+
+  const previousQualifierUids = new Set((before.postseason?.qualifiers || []).map((team) => team.uid));
+  for (const qualifier of league.postseason?.qualifiers || []) {
+    if (previousQualifierUids.has(qualifier.uid)) continue;
+    jobs.push(createTrustedNotification(db, qualifier.uid, {
+      id: notificationEventId("playoff-qualified", leagueId, league.season, qualifier.uid),
+      type: "playoff_qualified",
+      actorUid: null,
+      metadata: { leagueId, leagueName: league.name || "Your league", season: league.season, seed: qualifier.seed, teamName: qualifier.teamName, route: "/playoffs" },
+    }));
+  }
+
+  const champion = league.postseason?.champion;
+  if (champion?.uid && before.postseason?.champion?.uid !== champion.uid && league.postseason?.status === "completed") {
+    jobs.push(createTrustedNotification(db, champion.uid, {
+      id: notificationEventId("champion", leagueId, league.season, champion.uid),
+      type: "champion",
+      actorUid: null,
+      metadata: { leagueId, leagueName: league.name || "Your league", season: league.season, teamName: champion.teamName, route: "/playoffs" },
+    }));
+  }
+  if (before.status !== "offseason" && league.status === "offseason") jobs.push(createTrustedNotifications(db, league.memberIds, {
+    id: notificationEventId("offseason-started", leagueId, league.season), type: "league_lifecycle", actorUid: league.commissionerUid || null,
+    metadata: { leagueId, leagueName: league.name || "Your league", season: league.season, event: "offseason_started", route: `/league/${leagueId}` },
+  }));
+  if (before.status === "offseason" && league.status === "season_ready" && league.season === before.season + 1) jobs.push(createTrustedNotifications(db, league.memberIds, {
+    id: notificationEventId("next-season-started", leagueId, league.season), type: "league_lifecycle", actorUid: league.commissionerUid || null,
+    metadata: { leagueId, leagueName: league.name || "Your league", season: league.season, event: "next_season_started", route: `/league/${leagueId}` },
+  }));
+  await Promise.all(jobs);
+});
+
+export const produceLeagueLifecycleActivity = onDocumentUpdated({ document: "leagues/{leagueId}", retry: true }, async (event) => {
+  const before = event.data?.before.data();
+  const league = event.data?.after.data();
+  if (!before || !league) return;
+  const { leagueId } = event.params;
+  const jobs = [];
+  const base = { actorUid: league.commissionerUid || null, targetUid: null, gameId: null };
+  if (before.status !== "drafting" && league.status === "drafting") jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("draft-started", league.season), type: "draft_started", createdAt: league.draftStartedAt || null, metadata: { season: league.season },
+  }));
+  if (before.status === "drafting" && league.status === "season_ready") jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("draft-completed", league.season), type: "draft_completed", createdAt: league.updatedAt || null, metadata: { season: league.season },
+  }));
+  if (before.seasonProgress?.roundStatus !== ROUND_STATUS.ACTIVE && league.seasonProgress?.roundStatus === ROUND_STATUS.ACTIVE) jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("round-started", league.season, league.seasonProgress.currentRound), type: "round_started", createdAt: league.seasonProgress.roundStartedAt || league.updatedAt || null, metadata: { season: league.season, round: league.seasonProgress.currentRound },
+  }));
+  if (before.status !== "playoffs" && league.status === "playoffs") jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("playoffs-started", league.season), type: "playoffs_started", createdAt: league.postseason?.startedAt || league.updatedAt || null, metadata: { season: league.season },
+  }));
+  const champion = league.postseason?.champion;
+  if (champion?.uid && before.postseason?.champion?.uid !== champion.uid && league.postseason?.status === "completed") jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    id: activityEventId("champion-crowned", league.season), type: "champion_crowned", actorUid: champion.uid, targetUid: null, gameId: league.postseason?.games?.final || null,
+    createdAt: league.postseason?.completedAt || null, metadata: { season: league.season, teamName: champion.teamName || "The champion" },
+  }));
+  if (champion?.uid && before.postseason?.status !== "completed" && league.postseason?.status === "completed") jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("season-completed", league.season), type: "season_completed", createdAt: league.postseason.completedAt || league.updatedAt || null, metadata: { season: league.season, championName: champion.teamName || "The champion" },
+  }));
+  if (before.status !== "offseason" && league.status === "offseason") jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("offseason-started", league.season), type: "offseason_started", createdAt: league.offseason?.startedAt || league.updatedAt || null, metadata: { season: league.season, nextSeason: league.offseason?.nextSeason },
+  }));
+  if (before.status === "offseason" && league.status === "season_ready" && league.season === before.season + 1) jobs.push(createTrustedLeagueActivity(db, leagueId, {
+    ...base, id: activityEventId("next-season-started", league.season), type: "next_season_started", createdAt: league.seasonTransition?.completedAt || league.updatedAt || null, metadata: { season: league.season },
+  }));
+  await Promise.all(jobs);
+});
+
+export const produceOfficialGameActivity = onDocumentUpdated({ document: "leagues/{leagueId}/games/{gameId}", retry: true }, async (event) => {
+  const before = event.data?.before.data();
+  const game = event.data?.after.data();
+  if (!game || before?.status === "completed" || game.status !== "completed" || !game.result?.winnerUid || !game.presentationCompletedAt) return;
+  const { leagueId, gameId } = event.params;
+  const winnerName = game.result.winnerUid === game.homeUid ? game.homeTeamName : game.awayTeamName;
+  const loserName = game.result.loserUid === game.homeUid ? game.homeTeamName : game.awayTeamName;
+  await createTrustedLeagueActivity(db, leagueId, {
+    id: activityEventId("game-finished", gameId), type: "game_finished", actorUid: game.result.winnerUid, targetUid: game.result.loserUid, gameId,
+    createdAt: game.presentationCompletedAt || game.completedAt || null, metadata: { season: game.season, round: game.round || null, stage: game.stage || "regular_season", winnerName: winnerName || "The winner", loserName: loserName || "the opponent", homeScore: game.result.homeScore, awayScore: game.result.awayScore, route: "/games" },
+  });
+});
+
+async function produceRosterMovementActivity(event, type) {
+  const ownership = event.data?.data();
+  if (!ownership?.ownerUid) return;
+  const { leagueId, playerId } = event.params;
+  const [league, member, team, player] = await Promise.all([
+    db.doc(`leagues/${leagueId}`).get(),
+    db.doc(`leagues/${leagueId}/members/${ownership.ownerUid}`).get(),
+    db.doc(`leagues/${leagueId}/teams/${ownership.ownerUid}`).get(),
+    db.doc(`playerCatalogs/current/players/${playerId}`).get(),
+  ]);
+  if (!league.exists || league.data().status !== "offseason") return;
+  const signed = type === "free_agent_signed";
+  await createTrustedLeagueActivity(db, leagueId, {
+    id: activityEventId(signed ? "free-agent-signed" : "player-released", league.data().season, ownership.ownerUid, playerId, ownership.updatedAt?.toMillis?.() || "legacy"),
+    type, actorUid: ownership.ownerUid, targetUid: null, gameId: null, createdAt: ownership.updatedAt || null,
+    metadata: { actorName: member.data()?.displayName || "A GM", teamName: team.data()?.name || null, playerId: String(playerId), playerName: player.data()?.name || "a player" },
+  });
+}
+
+export const produceFreeAgentSigningActivity = onDocumentCreated({ document: "leagues/{leagueId}/playerOwnership/{playerId}", retry: true }, (event) => produceRosterMovementActivity(event, "free_agent_signed"));
+export const producePlayerReleaseActivity = onDocumentDeleted({ document: "leagues/{leagueId}/playerOwnership/{playerId}", retry: true }, (event) => produceRosterMovementActivity(event, "player_released"));
+
 async function reconcileExpiredContracts(transaction, leagueRef, league, contractsSnapshot, now) {
   if (!contractsSnapshot) return { released: 0, readyMemberIds: league.offseason?.readyMemberIds || [] };
   const agedContracts = contractsSnapshot.docs.map((snapshot) => {
@@ -894,6 +1214,82 @@ export const enterOffseason = onCall(async (request) => {
     transaction.update(leagueRef, buildOffseasonTransition(league, now));
     return { alreadyFinalized: historySnapshot.exists, season: league.season, expiredPlayersReleased: cleanup.released };
   });
+});
+
+export const leaveLeagueDynasty = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  const { leagueId } = request.data || {};
+  if (typeof leagueId !== "string") throw new HttpsError("invalid-argument", "A league is required.");
+  const actorUid = request.auth.uid;
+  const leagueRef = db.doc(`leagues/${leagueId}`);
+  const result = await db.runTransaction(async (transaction) => {
+    const leagueSnapshot = await transaction.get(leagueRef);
+    if (!leagueSnapshot.exists) throw new HttpsError("not-found", "This league is unavailable.");
+    const league = leagueSnapshot.data();
+    if (!league.memberIds?.includes(actorUid)) return { alreadyLeft: true, season: league.season };
+    const permission = canLeaveLeagueDynasty(league, actorUid);
+    if (!permission.allowed) {
+      const messages = {
+        OFFSEASON_REQUIRED: "You can leave this league during the offseason.",
+        COMMISSIONER_TRANSFER_REQUIRED: "The commissioner must archive the league or transfer authority before leaving.",
+      };
+      throw new HttpsError(permission.reason === "NOT_MEMBER" ? "permission-denied" : "failed-precondition", messages[permission.reason] || "League departure is unavailable.");
+    }
+    const memberRef = leagueRef.collection("members").doc(actorUid);
+    const teamRef = leagueRef.collection("teams").doc(actorUid);
+    const userRef = db.doc(`users/${actorUid}`);
+    const [memberSnapshot, teamSnapshot, userSnapshot, contractsSnapshot, ownershipSnapshot] = await Promise.all([
+      transaction.get(memberRef), transaction.get(teamRef), transaction.get(userRef),
+      transaction.get(leagueRef.collection("contracts").where("ownerUid", "==", actorUid)),
+      transaction.get(leagueRef.collection("playerOwnership").where("ownerUid", "==", actorUid)),
+    ]);
+    const now = Timestamp.now();
+    transaction.update(leagueRef, buildDepartingMemberUpdate(league, actorUid, now));
+    if (memberSnapshot.exists) transaction.delete(memberRef);
+    if (teamSnapshot.exists) transaction.delete(teamRef);
+    contractsSnapshot.docs.forEach((snapshot) => transaction.delete(snapshot.ref));
+    ownershipSnapshot.docs.forEach((snapshot) => transaction.delete(snapshot.ref));
+    if (userSnapshot.exists && userSnapshot.data().activeLeagueId === leagueId) transaction.update(userRef, { activeLeagueId: null, updatedAt: now });
+    return { alreadyLeft: false, season: league.season, releasedPlayers: ownershipSnapshot.size };
+  });
+  if (!result.alreadyLeft) {
+    try {
+      await createTrustedLeagueActivity(db, leagueId, { id: activityEventId("member-left", request.auth.uid, result.season), type: "member_left", actorUid: request.auth.uid, createdAt: Timestamp.now(), metadata: { season: result.season } });
+    } catch (error) { console.error("Member-left activity delivery failed.", { leagueId, actorUid, error: error.message }); }
+  }
+  return result;
+});
+
+export const archiveLeague = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  const { leagueId } = request.data || {};
+  if (typeof leagueId !== "string") throw new HttpsError("invalid-argument", "A league is required.");
+  const actorUid = request.auth.uid;
+  const leagueRef = db.doc(`leagues/${leagueId}`);
+  const result = await db.runTransaction(async (transaction) => {
+    const leagueSnapshot = await transaction.get(leagueRef);
+    if (!leagueSnapshot.exists) throw new HttpsError("not-found", "This league is unavailable.");
+    const league = leagueSnapshot.data();
+    const permission = canArchiveLeague(league, actorUid);
+    if (!permission.allowed) throw new HttpsError(permission.reason === "COMMISSIONER_REQUIRED" ? "permission-denied" : "failed-precondition", permission.reason === "OFFSEASON_REQUIRED" ? "A league can only be archived during offseason." : "Only the commissioner can archive this league.");
+    if (permission.alreadyArchived) return { alreadyArchived: true, season: league.season, memberIds: league.memberIds || [] };
+    const userSnapshots = await Promise.all((league.memberIds || []).map((uid) => transaction.get(db.doc(`users/${uid}`))));
+    const now = Timestamp.now();
+    transaction.update(leagueRef, buildArchiveUpdate(league, actorUid, now));
+    userSnapshots.forEach((snapshot) => {
+      if (snapshot.exists && snapshot.data().activeLeagueId === leagueId) transaction.update(snapshot.ref, { activeLeagueId: null, updatedAt: now });
+    });
+    return { alreadyArchived: false, season: league.season, memberIds: league.memberIds || [] };
+  });
+  if (!result.alreadyArchived) {
+    try {
+      await createTrustedLeagueActivity(db, leagueId, { id: activityEventId("league-archived", result.season), type: "league_archived", actorUid, createdAt: Timestamp.now(), metadata: { season: result.season } });
+    } catch (error) { console.error("League-archive activity delivery failed.", { leagueId, error: error.message }); }
+    try {
+      await createTrustedNotifications(db, result.memberIds, { id: notificationEventId("league-archived", leagueId, result.season), type: "league_lifecycle", actorUid, metadata: { leagueId, season: result.season, event: "league_archived", route: `/league/${leagueId}` } });
+    } catch (error) { console.error("League-archive notification delivery failed.", { leagueId, error: error.message }); }
+  }
+  return { alreadyArchived: result.alreadyArchived, season: result.season };
 });
 
 export const startNextSeason = onCall(async (request) => {

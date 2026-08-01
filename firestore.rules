@@ -33,6 +33,10 @@ service cloud.firestore {
       return leagueData.get('readyMemberIds', []);
     }
 
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
     function isNewPublicProfile(userId) {
       return request.resource.data.keys().hasOnly([
           'uid', 'displayName', 'photoURL', 'bannerURL', 'joinedAt',
@@ -278,6 +282,16 @@ service cloud.firestore {
         && onlyProfileFieldsChanged()
         || isCancelledLeagueReferenceCleanup();
 
+      match /notifications/{notificationId} {
+        allow get, list: if signedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /notificationMeta/{documentId} {
+        allow get: if signedIn() && request.auth.uid == userId && documentId == 'summary';
+        allow list, write: if false;
+      }
+
     }
 
     match /publicProfiles/{userId} {
@@ -295,6 +309,16 @@ service cloud.firestore {
         allow get, list: if signedIn();
         allow write: if false;
       }
+    }
+
+    match /devLogs/{devLogId} {
+      allow get, list: if isAdmin() || resource.data.status == 'published';
+      allow create, update, delete: if false;
+    }
+
+    match /appMeta/{documentId} {
+      allow get: if documentId == 'current';
+      allow list, create, update, delete: if false;
     }
 
     match /leagues/{leagueId} {
@@ -364,21 +388,7 @@ service cloud.firestore {
               && !(request.auth.uid in request.resource.data.readyMemberIds)
               && readyMemberIds(resource.data).hasAll(request.resource.data.readyMemberIds)
               && request.resource.data.readyMemberIds.size() == readyMemberIds(resource.data).size() - 1)))
-        || (signedIn()
-          && resource.data.status == 'lobby'
-          && request.auth.uid != resource.data.commissionerUid
-          && request.auth.uid in resource.data.memberIds
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'memberIds', 'readyMemberIds', 'updatedAt'
-          ])
-          && resource.data.memberIds.hasAll(request.resource.data.memberIds)
-          && !(request.auth.uid in request.resource.data.memberIds)
-          && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
-          && readyMemberIds(resource.data).hasAll(request.resource.data.readyMemberIds)
-          && !(request.auth.uid in request.resource.data.readyMemberIds)
-          && request.resource.data.readyMemberIds.size()
-            == readyMemberIds(resource.data).size()
-              - (request.auth.uid in readyMemberIds(resource.data) ? 1 : 0));
+        ;
 
       match /members/{userId} {
         allow get, list: if isLeagueMember(leagueId);
@@ -396,11 +406,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'ready', 'updatedAt'
           ]);
-        allow delete: if signedIn()
-          && request.auth.uid == userId
-          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
-          && request.auth.uid != get(/databases/$(database)/documents/leagues/$(leagueId)).data.commissionerUid
-          && !(request.auth.uid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds);
+        allow delete: if false;
       }
 
       match /teams/{userId} {
@@ -412,12 +418,12 @@ service cloud.firestore {
           && (isSeasonReadyLineupUpdate(leagueId, userId)
             || isOffseasonLineupUpdate(leagueId, userId)
             || isInSeasonTeamConfigurationUpdate(leagueId));
-        allow delete: if signedIn()
-          && request.auth.uid == userId
-          && resource.data.ownerUid == userId
-          && resource.data.roster.size() == 0
-          && get(/databases/$(database)/documents/leagues/$(leagueId)).data.status == 'lobby'
-          && !(request.auth.uid in getAfter(/databases/$(database)/documents/leagues/$(leagueId)).data.memberIds);
+        allow delete: if false;
+      }
+
+      match /activity/{activityId} {
+        allow get, list: if isLeagueMember(leagueId);
+        allow create, update, delete: if false;
       }
 
       match /seasons/{seasonId} {

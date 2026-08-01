@@ -1,42 +1,19 @@
-const notificationIcons = {
-  league_invitation: "◇",
-  trade_offer: "⇄",
-  match_result: "◆",
-  draft_event: "⌁",
-  award_received: "★",
-  system: "i",
-};
+import { formatNotificationTime, notificationPresentation } from "../../lib/notifications";
+import UiIcon from "../UiIcon";
 
-function NotificationCard({ notification, compact = false }) {
-  const icon = notificationIcons[notification.type] || notificationIcons.system;
+const icons = { person: "userPlus", draft: "clipboard", round: "calendar", result: "games", playoff: "bracket", champion: "trophy", trade: "pen", league: "info" };
+
+function NotificationCard({ notification, compact = false, onOpen }) {
+  const presentation = notificationPresentation(notification);
   return (
-    <article
-      className={`notification-card ${notification.read ? "" : "is-unread"} ${compact ? "notification-card--compact" : ""}`}
-    >
-      <div
-        className={`notification-card__icon notification-card__icon--${notification.type || "system"}`}
-        aria-hidden="true"
-      >
-        {icon}
-      </div>
-      <div className="notification-card__content">
-        <div>
-          <b>{notification.title}</b>
-          {!notification.read && <i aria-label="Unread notification" />}
-        </div>
-        <p>{notification.description}</p>
-        <small>{notification.timestamp}</small>
-      </div>
-      {notification.action && (
-        <button
-          type="button"
-          className="notification-card__action"
-          onClick={notification.action.onClick}
-        >
-          {notification.action.label}
-        </button>
-      )}
-    </article>
+    <button type="button" className={`notification-card ${notification.read ? "" : "is-unread"} ${compact ? "notification-card--compact" : ""}`} onClick={() => onOpen?.(notification)}>
+      <span className={`notification-card__icon notification-card__icon--${presentation.icon}`} aria-hidden="true"><UiIcon name={icons[presentation.icon]} size={18}/></span>
+      <span className="notification-card__content">
+        <span><b>{presentation.title}</b>{!notification.read && <i aria-label="Unread notification" />}</span>
+        <span className="notification-card__detail">{presentation.detail}</span>
+        <small>{formatNotificationTime(notification)}</small>
+      </span>
+    </button>
   );
 }
 

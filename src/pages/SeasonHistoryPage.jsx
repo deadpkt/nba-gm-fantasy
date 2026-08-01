@@ -1,5 +1,6 @@
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import useLeague from "../hooks/useLeague";
 import { db } from "../lib/firebase";
@@ -7,23 +8,34 @@ import "../seasonHistory.css";
 
 function SeasonHistoryPage() {
   const { activeLeagueId, activeLeague } = useLeague();
+  const { leagueId: routeLeagueId } = useParams();
+  const leagueId = routeLeagueId || activeLeagueId;
+  const [routeLeague, setRouteLeague] = useState(null);
   const [seasons, setSeasons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!routeLeagueId) { setRouteLeague(null); return undefined; }
+    return onSnapshot(doc(db, "leagues", routeLeagueId), (snapshot) => setRouteLeague(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null), () => setError("League history is currently unavailable."));
+  }, [routeLeagueId]);
+
+  useEffect(() => {
+    if (!leagueId) { setSeasons([]); setLoading(false); return undefined; }
     setLoading(true);
-    return onSnapshot(query(collection(db, "leagues", activeLeagueId, "seasons"), orderBy("season", "desc")), (snapshot) => {
+    return onSnapshot(query(collection(db, "leagues", leagueId, "seasons"), orderBy("season", "desc")), (snapshot) => {
       setSeasons(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
       setLoading(false);
     }, () => {
       setError("Season history is currently unavailable.");
       setLoading(false);
     });
-  }, [activeLeagueId]);
+  }, [leagueId]);
+
+  const league = routeLeague || activeLeague;
 
   return <PageLayout>
-    <section className="page-hero history-hero"><p className="section-label">{activeLeague?.name}</p><h1>Season <span>history.</span></h1><p>Permanent league championships, standings, and playoff results.</p></section>
+    <section className="page-hero history-hero"><p className="section-label">{league?.name}</p><h1>Season <span>history.</span></h1><p>Permanent league championships, standings, and playoff results.</p></section>
     <section className="season-history">
       {loading ? <p>Loading completed seasons...</p> : error ? <p role="alert">{error}</p> : seasons.length === 0 ? <p>No completed season history is available yet.</p> : seasons.map((season) => <article className="season-history__season" key={season.id}>
         <header><span>SEASON {season.season}</span><b>COMPLETED</b></header>

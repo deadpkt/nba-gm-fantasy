@@ -6,7 +6,7 @@
   "engines": { "node": "20" },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "build": "node --check index.js && node --check lib/completeOfficialGame.js && node --check shared/contracts.js && node --check shared/draftTimer.js && node --check shared/freeAgency.js && node --check shared/lineupFeasibility.js && node --check shared/preseasonRosterRepair.js && node --check shared/social.js && node --check shared/nbaCatalog.js && node --check lib/balldontlie.js && node --check lib/syncNbaCatalog.js"
+    "build": "node --check index.js && node --check shared/devLogs.js && node --check lib/completeOfficialGame.js && node --check lib/notifications.js && node --check lib/leagueActivity.js && node --check shared/leagueLifecycle.js && node --check shared/notifications.js && node --check shared/leagueActivity.js && node --check shared/contracts.js && node --check shared/draftTimer.js && node --check shared/freeAgency.js && node --check shared/lineupFeasibility.js && node --check shared/preseasonRosterRepair.js && node --check shared/social.js && node --check shared/nbaCatalog.js && node --check lib/balldontlie.js && node --check lib/syncNbaCatalog.js"
   },
   "dependencies": {
     "firebase-admin": "^14.2.0",

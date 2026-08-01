@@ -14,12 +14,12 @@ import {
   cancelLeague,
   createLeague,
   joinLeague,
-  leaveLeague,
   selectLeague,
   setLeagueMemberReady,
   startLeagueDraft,
   startLeagueSeason,
 } from "../lib/leagues";
+import { archiveLeague, leaveLeagueDynasty } from "../lib/leagueLifecycle";
 
 export const LeagueContext = createContext(null);
 
@@ -124,8 +124,9 @@ export function LeagueProvider({ children }) {
         startLeagueDraft({ leagueId: activeLeagueId, userId: user.uid }),
       startSeason: async () =>
         startLeagueSeason({ leagueId: activeLeagueId, userId: user.uid }),
-      leaveLeague: async () =>
-        leaveLeague({ leagueId: activeLeagueId, userId: user.uid }),
+      leaveLeague: async () => leaveLeagueDynasty(activeLeagueId),
+      leaveLeagueDynasty: async () => leaveLeagueDynasty(activeLeagueId),
+      archiveLeague: async () => archiveLeague(activeLeagueId),
       cancelLeague: async () =>
         cancelLeague({
           leagueId: activeLeagueId,

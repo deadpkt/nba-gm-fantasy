@@ -1,202 +1,127 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import PlayerImage from "./player/PlayerImage";
 import {
   findRosterPlayer,
   getAssignableLineupPlayers,
   LINEUP_POSITIONS,
 } from "../utils/team";
-import { openPlayerDetails } from "./player/PlayerDetailsModal";
 
-const formattedStat = (value) =>
-  Number.isFinite(value) ? value.toFixed(1) : "—";
-
-function threePointPercentage(stats = {}) {
-  const percentage =
-    stats.threePointPercentage ?? stats.threePointPercent ?? stats.threePoint;
-  if (!Number.isFinite(percentage)) return "—";
-  return `${percentage <= 1 ? percentage * 100 : percentage}%`;
+function PositionMap() {
+  return (
+    <svg className="position-map__geometry" viewBox="0 0 600 650" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="none">
+        <rect x="2" y="2" width="596" height="646" rx="12" />
+        <path d="M 190 650 V 475 H 410 V 650 M 190 475 H 410" />
+        <circle cx="300" cy="475" r="66" />
+        <path d="M 48 650 V 565 C 48 300 145 150 300 150 C 455 150 552 300 552 565 V 650" />
+        <path d="M 260 606 H 340" />
+        <circle cx="300" cy="585" r="14" />
+      </g>
+    </svg>
+  );
 }
 
-function BasketballCourt({ team, lineup, onAssign }) {
-  const [focusedPlayerId, setFocusedPlayerId] = useState(null);
-  const teamColor = team.find((player) => player.color)?.color || "#e32842";
+function BasketballCourt({ team, lineup, onAssign, benchContent }) {
+  const [selectedPosition, setSelectedPosition] = useState(null);
+  const [highlightedPosition, setHighlightedPosition] = useState(null);
+  const closeButtonRef = useRef(null);
+  const eligiblePlayers = useMemo(
+    () => selectedPosition ? getAssignableLineupPlayers(team, lineup, selectedPosition) : [],
+    [lineup, selectedPosition, team],
+  );
+  const selectedPlayer = selectedPosition ? findRosterPlayer(team, lineup?.[selectedPosition]) : null;
+  const assignedCount = LINEUP_POSITIONS.filter((position) => lineup?.[position]).length;
+
+  useEffect(() => {
+    if (!selectedPosition) return undefined;
+    closeButtonRef.current?.focus();
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSelectedPosition(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedPosition]);
+
+  function selectPlayer(playerId) {
+    onAssign(selectedPosition, playerId);
+    setSelectedPosition(null);
+  }
+
+  function positionInteractionProps(position) {
+    return {
+      onMouseEnter: () => setHighlightedPosition(position),
+      onMouseLeave: () => setHighlightedPosition(null),
+      onFocus: () => setHighlightedPosition(position),
+      onBlur: () => setHighlightedPosition(null),
+    };
+  }
 
   return (
-    <section className="lineup-section">
-      <div className="section-heading">
-        <div>
-          <p className="section-label">LINEUP BOARD</p>
-          <h2>
-            Starting five <span>Build your game-night unit</span>
-          </h2>
-        </div>
-        <div className="lineup-section__status" aria-label="Lineup status">
-          <span>ACTIVE UNIT</span>
-          <b>
-            {Object.values(lineup).filter(Boolean).length}
-            <i>/5</i>
-          </b>
-        </div>
-      </div>
-      <div className="lineup-command" style={{ "--court-accent": teamColor }}>
-        <div
-          className="basketball-court"
-          aria-label="Starting five court layout"
-        >
-          <div className="court-floor-glow" aria-hidden="true" />
-          <div className="court-center-logo" aria-hidden="true">
-            <span>FC</span>
-            <small>FRANCHISE</small>
-          </div>
-          <div
-            className="court-marking court-marking--center-line"
-            aria-hidden="true"
-          />
-          <div
-            className="court-marking court-marking--center-circle"
-            aria-hidden="true"
-          />
-          <div
-            className="court-marking court-marking--three-arc"
-            aria-hidden="true"
-          />
-          <div
-            className="court-marking court-marking--paint"
-            aria-hidden="true"
-          />
-          <div
-            className="court-marking court-marking--free-throw"
-            aria-hidden="true"
-          />
-          <div
-            className="court-marking court-marking--basket"
-            aria-hidden="true"
-          />
+    <section className="lineup-workspace">
+      <aside className="position-map-panel">
+        <div className="position-map-panel__heading"><p className="section-label">FORMATION</p><b>{assignedCount} / 5</b></div>
+        <div className="position-map" aria-label="Starting five position map">
+          <PositionMap />
           {LINEUP_POSITIONS.map((position) => {
-            const player = findRosterPlayer(team, lineup[position]);
-            const isFocused = focusedPlayerId === player?.id;
-            const playerColor = player?.color || teamColor;
+            const player = findRosterPlayer(team, lineup?.[position]);
+            return (
+              <button
+                type="button"
+                className={`position-map__marker position-map__marker--${position.toLowerCase()}${highlightedPosition === position ? " is-highlighted" : ""}${player ? " is-filled" : ""}`}
+                onClick={() => setSelectedPosition(position)}
+                aria-label={player ? `Change ${position}, currently ${player.name}` : `Add player to ${position}`}
+                key={position}
+                {...positionInteractionProps(position)}
+              >
+                <b>{position}</b><i aria-hidden="true">{player ? "" : "+"}</i>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
 
+      <div className="roster-lineup-panel">
+        <div className="roster-lineup-panel__heading"><div><p className="section-label">STARTING FIVE</p><h2>Active lineup</h2></div><b>{assignedCount} / 5</b></div>
+        <div className="starting-five-list">
+          {LINEUP_POSITIONS.map((position) => {
+            const player = findRosterPlayer(team, lineup?.[position]);
             return (
-              <div
-                className={`court-slot court-slot--${position.toLowerCase()}`}
+              <button
+                type="button"
+                className={`starting-five-row${highlightedPosition === position ? " is-highlighted" : ""}${player ? "" : " is-empty"}`}
+                onClick={() => setSelectedPosition(position)}
+                aria-label={player ? `Change ${position}, currently ${player.name}` : `Add player to ${position}`}
+                title={player?.name || `Add ${position}`}
                 key={position}
+                {...positionInteractionProps(position)}
               >
-                <span className="court-slot__position">{position}</span>
-                {player ? (
-                  <button
-                    type="button"
-                    className={`court-player ${player.overall >= 94 ? "court-player--elite" : ""} ${isFocused ? "is-focused" : ""}`}
-                    style={{ "--player-color": playerColor }}
-                    onClick={() => {
-                      setFocusedPlayerId((current) =>
-                        current === player.id ? null : player.id,
-                      );
-                      openPlayerDetails(player);
-                    }}
-                    aria-expanded={isFocused}
-                  >
-                    <span className="court-player__avatar">
-                      <img src={player.image} alt="" />
-                    </span>
-                    <span className="court-player__identity">
-                      <b>{player.name}</b>
-                      <small>
-                        {position} · {player.team}
-                      </small>
-                    </span>
-                    <span
-                      className="court-player__ovr"
-                      aria-label={`${player.overall} overall`}
-                    >
-                      <b>{player.overall}</b>
-                      <small>OVR</small>
-                    </span>
-                    <span
-                      className="court-player__stats"
-                      aria-label={`${player.name} statistics`}
-                    >
-                      <strong>{player.name}</strong>
-                      <span>
-                        <b>OVR</b>
-                        {player.overall}
-                      </span>
-                      <span>
-                        <b>PTS</b>
-                        {formattedStat(player.stats?.points)}
-                      </span>
-                      <span>
-                        <b>REB</b>
-                        {formattedStat(player.stats?.rebounds)}
-                      </span>
-                      <span>
-                        <b>AST</b>
-                        {formattedStat(player.stats?.assists)}
-                      </span>
-                      <span>
-                        <b>3PT</b>
-                        {threePointPercentage(player.stats)}
-                      </span>
-                    </span>
-                  </button>
-                ) : (
-                  <div className="court-player court-player--empty">
-                    <b>Open position</b>
-                    <small>Add a starter</small>
-                  </div>
-                )}
-              </div>
+                <span className="starting-five-row__position">{position}</span>
+                <span className="starting-five-row__avatar">{player ? <PlayerImage player={player} alt="" /> : <i aria-hidden="true">+</i>}</span>
+                <span className="starting-five-row__identity"><b>{player?.name || "Open position"}</b><small>{player ? player.team || player.primaryPosition || player.position : "Select an eligible player"}</small></span>
+                <strong>{player?.overall ?? "—"}<small> OVR</small></strong>
+              </button>
             );
           })}
         </div>
-        <aside
-          className="lineup-command__rail"
-          aria-label="Starting five assignments"
-        >
-          <div className="lineup-command__rail-head">
-            <span>LINEUP COMMAND</span>
-            <b>SELECT A STARTER</b>
-          </div>
-          {LINEUP_POSITIONS.map((position) => {
-            const player = findRosterPlayer(team, lineup[position]);
-            return (
-              <label
-                className="lineup-control"
-                key={position}
-                htmlFor={`lineup-${position}`}
-              >
-                <span className="lineup-control__slot">{position}</span>
-                <span className="lineup-control__copy">
-                  <b>{player?.name || "Open slot"}</b>
-                  <small>
-                    {player
-                      ? `${player.overall} OVR · ${player.team}`
-                      : "Choose from your roster"}
-                  </small>
-                </span>
-                <select
-                  id={`lineup-${position}`}
-                  value={lineup[position] || ""}
-                  onChange={(event) =>
-                    onAssign(position, event.target.value || null)
-                  }
-                >
-                  <option value="">Unassigned</option>
-                  {getAssignableLineupPlayers(team, lineup, position).map(
-                    (item) => (
-                      <option value={item.id} key={item.id}>
-                        {item.name} ({item.overall})
-                      </option>
-                    ),
-                  )}
-                </select>
-              </label>
-            );
-          })}
-          <p className="lineup-command__hint">
-            Select a card on court to inspect player attributes.
-          </p>
-        </aside>
+        {benchContent}
       </div>
+
+      {selectedPosition && (
+        <div className="lineup-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPosition(null); }}>
+          <section className="lineup-picker" role="dialog" aria-modal="true" aria-labelledby="lineup-picker-title">
+            <header><div><p className="section-label">{selectedPosition} POSITION</p><h2 id="lineup-picker-title">Choose a starter</h2></div><button ref={closeButtonRef} className="lineup-picker__close" type="button" onClick={() => setSelectedPosition(null)} aria-label="Close lineup picker">×</button></header>
+            <div className="lineup-picker__options">
+              {selectedPlayer && <button type="button" className="lineup-picker__clear" onClick={() => selectPlayer(null)}>Clear {selectedPosition} position</button>}
+              {eligiblePlayers.map((player) => {
+                const isCurrent = player.id === selectedPlayer?.id;
+                const positions = player.eligiblePositions?.length ? player.eligiblePositions.join(" / ") : player.primaryPosition || player.position;
+                return <button type="button" className={`lineup-picker__player${isCurrent ? " is-current" : ""}`} onClick={() => selectPlayer(player.id)} key={player.id}><PlayerImage player={player} alt="" /><span><b>{player.name}</b><small>{positions || "Player"} · {player.overall ?? "—"} OVR</small></span>{isCurrent && <em>CURRENT</em>}</button>;
+              })}
+              {!eligiblePlayers.length && <p className="lineup-picker__empty">No eligible roster players are available.</p>}
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

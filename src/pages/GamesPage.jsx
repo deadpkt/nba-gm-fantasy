@@ -1,58 +1,100 @@
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import OfficialGamePresentation from "../components/OfficialGamePresentation";
 import PageLayout from "../components/PageLayout";
+import {
+  FeaturedMatchup,
+  GamesHeader,
+  RecentLeaders,
+  RoundScoreboard,
+  SeasonTimeline,
+  StakesPanel,
+} from "../components/games/GameNightHub";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
-import useLeagueTeam from "../hooks/useLeagueTeam";
 import { db } from "../lib/firebase";
 import { getUserFriendlyError, reportClientError } from "../lib/clientErrors";
-import { getPresentationFrame, isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
+import {
+  buildSeasonTimeline,
+  deriveMatchupStoryline,
+  GAME_HUB_STATUS,
+  getHubGameStatus,
+  getRecentGameLeaders,
+  getVisibleGameScore,
+  selectFeaturedGame,
+  visibleCompletedGames,
+} from "../lib/gamesHub";
+import { isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
 import {
   finalizeOfficialGamePresentation,
   getOfficialParticipantSide,
-  OFFICIAL_GAME_STATUS,
   startRegularSeasonRound,
 } from "../lib/officialGames";
 import { isRoundProgressionComplete, ROUND_STATUS } from "../lib/seasonProgress";
-import { normalizeRosterConfig } from "../lib/rosterConfig";
-import { getMissingLineupPositions, isLineupComplete } from "../utils/team";
+import { calculateStandings } from "../lib/standings";
 
 function GamesPage() {
   const { user } = useAuth();
-  const { activeLeagueId, activeLeague } = useLeague();
-  const { roster, lineup, record } = useLeagueTeam();
-  const rosterSize = normalizeRosterConfig(activeLeague).rosterSize;
+  const { activeLeagueId, activeLeague, teams } = useLeague();
   const [scheduleGames, setScheduleGames] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState("");
   const [gameActionError, setGameActionError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [openGameId, setOpenGameId] = useState(null);
+  const [selectedRound, setSelectedRound] = useState(null);
   const [presentationNow, setPresentationNow] = useState(Date.now());
-  const lineupReady = isLineupComplete(roster, lineup);
-  const missingPositions = getMissingLineupPositions(roster, lineup);
   const progress = normalizeProgress(activeLeague, scheduleGames);
-  const currentRoundGames = scheduleGames.filter(
-    (game) => game.round === progress.currentRound,
+  const currentRoundGames = useMemo(
+    () => scheduleGames.filter((game) => game.round === progress.currentRound),
+    [progress.currentRound, scheduleGames],
   );
-  const currentMatchup = currentRoundGames.find(
+  const visibleGames = useMemo(
+    () => visibleCompletedGames(scheduleGames, presentationNow),
+    [presentationNow, scheduleGames],
+  );
+  const standings = useMemo(
+    () => calculateStandings(teams, visibleGames, activeLeague?.season),
+    [activeLeague?.season, teams, visibleGames],
+  );
+  const featuredCandidate = useMemo(
+    () => selectFeaturedGame(scheduleGames, user.uid, progress.currentRound, presentationNow),
+    [presentationNow, progress.currentRound, scheduleGames, user.uid],
+  );
+  const hasCurrentRoundMatchup = currentRoundGames.some((game) => getOfficialParticipantSide(game, user.uid));
+  const featuredGame = currentRoundGames.length > 0 && !hasCurrentRoundMatchup && !progress.regularSeasonComplete
+    ? null
+    : featuredCandidate;
+  const featuredStatus = getHubGameStatus(featuredGame, progress.currentRound, presentationNow);
+  const featuredScore = getVisibleGameScore(featuredGame, presentationNow);
+  const storyline = deriveMatchupStoryline(featuredGame, standings, scheduleGames, presentationNow);
+  const userRow = standings.find((row) => row.teamUid === user.uid);
+  const opponentUid = featuredGame?.homeUid === user.uid ? featuredGame?.awayUid : featuredGame?.homeUid;
+  const opponentRow = standings.find((row) => row.teamUid === opponentUid);
+  const timeline = useMemo(
+    () => buildSeasonTimeline(scheduleGames, user.uid, progress.currentRound, presentationNow),
+    [presentationNow, progress.currentRound, scheduleGames, user.uid],
+  );
+  const recentGame = [...visibleGames].reverse().find(
     (game) => getOfficialParticipantSide(game, user.uid),
   );
+  const recentLeaders = getRecentGameLeaders(recentGame, presentationNow);
   const openGame = scheduleGames.find((game) => game.id === openGameId);
-  const openGamePresenting =
-    openGame?.timeline?.length &&
-    !getPresentationFrame(openGame, presentationNow).finished;
   const isCommissioner = activeLeague?.commissionerUid === user.uid;
-  const canStartRound =
-    isCommissioner &&
-    !progress.regularSeasonComplete &&
-    (progress.roundStatus === ROUND_STATUS.PENDING ||
-      (progress.roundStatus === ROUND_STATUS.COMPLETED && isRoundProgressionComplete(currentRoundGames)));
+  const canStartRound = isCommissioner && !progress.regularSeasonComplete && (
+    progress.roundStatus === ROUND_STATUS.PENDING ||
+    (progress.roundStatus === ROUND_STATUS.COMPLETED && isRoundProgressionComplete(currentRoundGames))
+  );
   const nextRound = progress.roundStatus === ROUND_STATUS.COMPLETED
     ? progress.currentRound + 1
     : progress.currentRound;
   const rounds = useMemo(() => summarizeRounds(scheduleGames), [scheduleGames]);
+  const shownRound = selectedRound ?? progress.currentRound;
+  const shownRoundGames = scheduleGames.filter((game) => game.round === shownRound);
+  const remaining = currentRoundGames.filter(
+    (game) => getHubGameStatus(game, progress.currentRound, presentationNow) !== GAME_HUB_STATUS.FINAL,
+  ).length;
   const presentationClockActive = scheduleGames.some(
     (game) => game.timeline?.length && !isOfficialGameFinalVisible(game, presentationNow),
   );
@@ -75,6 +117,7 @@ function GamesPage() {
       return;
     }
     setOpenGameId(game.id);
+    window.requestAnimationFrame(() => document.querySelector(".official-game-session")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   useEffect(() => {
@@ -106,85 +149,80 @@ function GamesPage() {
     );
   }, [activeLeague?.season, activeLeagueId]);
 
+  const featuredAction = getFeaturedAction({
+    busyAction,
+    canStartRound,
+    featuredGame,
+    featuredStatus,
+    nextRound,
+    onOpen: openOfficialGame,
+    onStart: () => run("round", () => startRegularSeasonRound({ leagueId: activeLeagueId })),
+  });
+
   return (
     <PageLayout>
-      <section className="page-hero games-hero">
-        <p className="section-label">OFFICIAL REGULAR SEASON</p>
-        <h1>Season {activeLeague?.season} <span>Round {progress.currentRound}.</span></h1>
-        <p>{progress.regularSeasonComplete ? "Regular season complete. Playoff progression is not implemented yet." : `Round ${progress.currentRound} of ${progress.totalRounds}.`}</p>
-      </section>
-      <section className="official-schedule">
+      <main className="game-night-hub">
+        <GamesHeader season={activeLeague?.season} progress={progress} remaining={remaining} />
         {gameActionError && <p className="official-game-error" role="alert">{gameActionError}</p>}
-        {isCommissioner && (
-          <div className="round-control-panel broadcast-control">
-            <div><span>COMMISSIONER CONTROL</span><b>{progress.regularSeasonComplete ? "REGULAR SEASON COMPLETE" : progress.roundStatus === ROUND_STATUS.ACTIVE ? `ROUND ${progress.currentRound} IN PROGRESS — WAITING FOR LIVE GAMES TO FINISH` : progress.roundStatus === ROUND_STATUS.COMPLETED && !isRoundProgressionComplete(currentRoundGames) ? `ROUND ${progress.currentRound} — WAITING FOR LIVE GAMES TO FINISH` : progress.roundStatus === ROUND_STATUS.COMPLETED ? `ROUND ${progress.currentRound} COMPLETE` : `ROUND ${progress.currentRound} AVAILABLE`}</b></div>
-            {canStartRound && nextRound <= progress.totalRounds && (
-              <button className="button-primary" type="button" disabled={Boolean(busyAction)} onClick={() => run("round", () => startRegularSeasonRound({ leagueId: activeLeagueId }))}>
-                {busyAction === "round" ? "Starting..." : progress.roundStatus === ROUND_STATUS.COMPLETED ? `Start Next Round (${nextRound})` : `Start Round ${nextRound}`}
-              </button>
-            )}
+        {openGame && <section className="official-game-session">
+          <header><div><span>OFFICIAL GAMECAST · ROUND {openGame.round}</span><h2>{openGame.awayTeamName} at {openGame.homeTeamName}</h2></div><button type="button" onClick={() => setOpenGameId(null)}>Close Gamecast</button></header>
+          <OfficialGamePresentation game={openGame} onPresentationComplete={() => finalizeOfficialGamePresentation({ leagueId: activeLeagueId, gameId: openGame.id })} renderFinal={() => <OfficialBoxScore game={openGame} />} />
+        </section>}
+        {scheduleLoading ? <div className="game-night-state">Loading game night...</div> : scheduleError ? <div className="game-night-state" role="alert">{scheduleError}</div> : scheduleGames.length === 0 ? (
+          <EmptyGamesState leagueId={activeLeagueId} />
+        ) : <>
+          <FeaturedMatchup game={featuredGame} status={featuredStatus} score={featuredScore} standings={standings} storyline={storyline} action={featuredAction} />
+          {isCommissioner && <CommissionerRoundControl progress={progress} canStartRound={canStartRound} nextRound={nextRound} busy={busyAction === "round"} onStart={() => run("round", () => startRegularSeasonRound({ leagueId: activeLeagueId }))} />}
+          <div className="game-night-grid">
+            <RoundScoreboard games={currentRoundGames} currentUid={user.uid} currentRound={progress.currentRound} now={presentationNow} statusFor={(game) => getHubGameStatus(game, progress.currentRound, presentationNow)} onOpen={openOfficialGame} sectionId="round-scoreboard" />
+            <StakesPanel userRow={userRow} opponentRow={opponentRow} />
           </div>
-        )}
-        {openGame && (
-          <div className="official-game-session">
-            <span>OFFICIAL GAME / ROUND {openGame.round}</span>
-            <h3>{openGame.awayTeamName} at {openGame.homeTeamName}</h3>
-            <p>Status: {openGamePresenting ? "LIVE PRESENTATION" : openGame.status.replaceAll("_", " ").toUpperCase()}</p>
-            <OfficialGamePresentation game={openGame} onPresentationComplete={() => finalizeOfficialGamePresentation({ leagueId: activeLeagueId, gameId: openGame.id })} renderFinal={() => <OfficialBoxScore game={openGame} />} />
-          </div>
-        )}
-        {scheduleLoading ? <p>Loading official schedule...</p> : scheduleError ? <p role="alert">{scheduleError}</p> : (
-          <>
-            <section className="current-matchup broadcast-matchup">
-              <span>CURRENT ROUND / YOUR MATCHUP</span>
-              {currentMatchup ? (
-                <>
-                  <div className="broadcast-matchup__teams">
-                    <span><small>AWAY TEAM</small><b>{currentMatchup.awayTeamName}</b></span>
-                    <i>VS</i>
-                    <span><small>HOME TEAM</small><b>{currentMatchup.homeTeamName}</b></span>
-                  </div>
-                  <small>Round {currentMatchup.round} <i className={`game-status-chip game-status-chip--${gameStatusLabel(currentMatchup, presentationNow).toLowerCase()}`}>{gameStatusLabel(currentMatchup, presentationNow)}</i></small>
-                  {[OFFICIAL_GAME_STATUS.IN_PROGRESS, OFFICIAL_GAME_STATUS.COMPLETED].includes(currentMatchup.status) && (
-                    <button className={gameStatusLabel(currentMatchup, presentationNow) === "LIVE" ? "button-primary" : "button-secondary"} type="button" disabled={busyAction === `game-${currentMatchup.id}`} onClick={() => openOfficialGame(currentMatchup)}>
-                      {busyAction === `game-${currentMatchup.id}` ? "Preparing..." : gameStatusLabel(currentMatchup, presentationNow) === "LIVE" ? "Watch Live" : "View Result"}
-                    </button>
-                  )}
-                </>
-              ) : <p>No matchup is assigned to your franchise in this round.</p>}
-            </section>
-            <section className="compact-schedule">
-              <h3>League schedule</h3>
-              {rounds.map((round) => (
-                <details open={round.round === progress.currentRound} key={round.round}>
-                  <summary><b>Round {round.round}</b><span>{round.label}</span></summary>
-                  {round.games.map((game) => (
-                    <div key={game.id}><span>#{game.gameNumber}</span><b>{game.awayTeamName} at {game.homeTeamName}</b><small>{isOfficialGameFinalVisible(game, presentationNow) ? `${game.result?.awayScore}–${game.result?.homeScore} FINAL` : game.timeline?.length ? "LIVE" : game.status.replaceAll("_", " ").toUpperCase()}</small></div>
-                  ))}
-                </details>
-              ))}
-            </section>
-          </>
-        )}
-      </section>
-      <section className="game-status"><div><span>SEASON RECORD</span><b>{record.wins}-{record.losses}</b></div><div><span>ROSTER</span><b>{roster.length}/{rosterSize} PLAYERS</b></div><div><span>LINEUP STATUS</span><b>{lineupReady ? "READY FOR TIP-OFF" : `MISSING: ${missingPositions.join(", ")}`}</b></div></section>
+          <SeasonTimeline items={timeline} onOpen={openOfficialGame} />
+          <RecentLeaders game={recentGame} leaders={recentLeaders} />
+          <section className="game-night-section full-schedule">
+            <header><div><span>ACTIVE SEASON</span><h2>League Schedule</h2></div><Link to="/standings">View Standings</Link></header>
+            <div className="round-selector" aria-label="Select schedule round">{rounds.map((round) => <button className={shownRound === round.round ? "is-active" : ""} key={round.round} onClick={() => setSelectedRound(round.round)} type="button"><b>R{round.round}</b><small>{round.label}</small></button>)}</div>
+            <RoundScoreboard games={shownRoundGames} currentUid={user.uid} currentRound={progress.currentRound} now={presentationNow} statusFor={(game) => getHubGameStatus(game, progress.currentRound, presentationNow)} onOpen={openOfficialGame} showHeader={false} />
+          </section>
+        </>}
+      </main>
     </PageLayout>
   );
+}
+
+function getFeaturedAction({ busyAction, canStartRound, featuredGame, featuredStatus, nextRound, onOpen, onStart }) {
+  if (!featuredGame) return null;
+  if ([GAME_HUB_STATUS.LIVE, GAME_HUB_STATUS.FINAL].includes(featuredStatus)) {
+    return <button className="button-primary" disabled={busyAction === `game-${featuredGame.id}`} onClick={() => onOpen(featuredGame)} type="button">{featuredStatus === GAME_HUB_STATUS.LIVE ? "Watch Live" : "View Box Score"}</button>;
+  }
+  if (canStartRound && [GAME_HUB_STATUS.READY, GAME_HUB_STATUS.UPCOMING].includes(featuredStatus)) {
+    return <button className="button-primary" disabled={Boolean(busyAction)} onClick={onStart} type="button">{busyAction === "round" ? "Starting..." : `Start Round ${nextRound}`}</button>;
+  }
+  return <a className="button-secondary" href="#round-scoreboard">View Matchup</a>;
+}
+
+function CommissionerRoundControl({ progress, canStartRound, nextRound, busy, onStart }) {
+  const waiting = progress.roundStatus === ROUND_STATUS.ACTIVE || (progress.roundStatus === ROUND_STATUS.COMPLETED && !canStartRound);
+  return <aside className="commissioner-round-control"><div><span>COMMISSIONER CONTROL</span><b>{progress.regularSeasonComplete ? "Regular season complete" : waiting ? `Round ${progress.currentRound} is in progress` : `Round ${nextRound} is available`}</b></div>{canStartRound && nextRound <= progress.totalRounds && <button className="button-secondary" disabled={busy} onClick={onStart} type="button">{busy ? "Starting..." : `Start Round ${nextRound}`}</button>}</aside>;
+}
+
+function EmptyGamesState({ leagueId }) {
+  return <section className="game-night-state game-night-state--empty"><span>NO GAMES YET</span><h2>Your season schedule is not ready.</h2><p>Complete team setup and return to the league dashboard to continue.</p><Link className="button-primary" to={`/league/${leagueId}`}>Return to League</Link></section>;
 }
 
 function normalizeProgress(league, games) {
   if (league?.seasonProgress) return league.seasonProgress;
   const totalRounds = league?.schedule?.totalRounds || Math.max(1, ...games.map((game) => game.round));
   const firstIncomplete = Array.from({ length: totalRounds }, (_, index) => index + 1).find(
-    (round) => games.some((game) => game.round === round && game.status !== OFFICIAL_GAME_STATUS.COMPLETED),
+    (round) => games.some((game) => game.round === round && game.status !== "completed"),
   );
   const currentRound = firstIncomplete || totalRounds;
   const currentGames = games.filter((game) => game.round === currentRound);
   return {
     currentRound,
     totalRounds,
-    roundStatus: currentGames.some((game) => game.status === OFFICIAL_GAME_STATUS.IN_PROGRESS) ? ROUND_STATUS.ACTIVE : currentGames.length && currentGames.every((game) => game.status === OFFICIAL_GAME_STATUS.COMPLETED) ? ROUND_STATUS.COMPLETED : ROUND_STATUS.PENDING,
-    regularSeasonComplete: games.length > 0 && games.every((game) => game.status === OFFICIAL_GAME_STATUS.COMPLETED),
+    roundStatus: currentGames.some((game) => game.status === "in_progress") ? ROUND_STATUS.ACTIVE : currentGames.length && currentGames.every((game) => game.status === "completed") ? ROUND_STATUS.COMPLETED : ROUND_STATUS.PENDING,
+    regularSeasonComplete: games.length > 0 && games.every((game) => game.status === "completed"),
   };
 }
 
@@ -193,14 +231,8 @@ function summarizeRounds(games) {
   games.forEach((game) => grouped.set(game.round, [...(grouped.get(game.round) || []), game]));
   return [...grouped].map(([round, roundGames]) => ({
     round,
-    games: roundGames,
-    label: roundGames.every((game) => game.status === OFFICIAL_GAME_STATUS.COMPLETED) ? "Complete" : roundGames.some((game) => game.status === OFFICIAL_GAME_STATUS.IN_PROGRESS) ? "Live" : "Upcoming",
+    label: roundGames.every((game) => game.status === "completed") ? "Final" : roundGames.some((game) => game.status === "in_progress") ? "Live" : "Upcoming",
   }));
-}
-
-function gameStatusLabel(game, now) {
-  if (game.timeline?.length && !isOfficialGameFinalVisible(game, now)) return "LIVE";
-  return isOfficialGameFinalVisible(game, now) ? "FINAL" : game.status.replaceAll("_", " ").toUpperCase();
 }
 
 function OfficialBoxScore({ game }) {

@@ -2,33 +2,46 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
+import {
+  MyStandingSummary,
+  RaceInsight,
+  StandingsHeader,
+  StandingsSkeleton,
+  StandingsTable,
+} from "../components/standings/LeagueRaceCenter";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import { db } from "../lib/firebase";
-import { finalizeRegularSeason, initializePlayoffs } from "../lib/officialGames";
-import { calculateStandings, findRecordMismatches } from "../lib/standings";
 import { getUserFriendlyError, reportClientError } from "../lib/clientErrors";
+import { isOfficialGameFinalVisible } from "../lib/officialGamePresentation";
+import { finalizeRegularSeason, initializePlayoffs } from "../lib/officialGames";
+import { playoffQualifierCount } from "../lib/postseason";
+import { deriveRaceInsight, visibleStandingsGames } from "../lib/standingsRace";
+import { calculateStandings, findRecordMismatches } from "../lib/standings";
+import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 import "../standings.css";
-
-const formatWinPercentage = (value) => value.toFixed(3).replace(/^0/, "");
 
 function StandingsPage() {
   const { user } = useAuth();
-  const { activeLeagueId, activeLeague, teams } = useLeague();
+  const { activeLeagueId, activeLeague, teams, members } = useLeague();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [presentationNow, setPresentationNow] = useState(Date.now());
   const [finalizationRequested, setFinalizationRequested] = useState(false);
   const [playoffBusy, setPlayoffBusy] = useState(false);
   const [playoffError, setPlayoffError] = useState("");
+  const visibleGames = useMemo(
+    () => visibleStandingsGames(games, presentationNow),
+    [games, presentationNow],
+  );
   const standings = useMemo(
-    () => calculateStandings(teams, games, activeLeague?.season),
-    [activeLeague?.season, games, teams],
+    () => calculateStandings(teams, visibleGames, activeLeague?.season),
+    [activeLeague?.season, teams, visibleGames],
   );
   const finalResult = activeLeague?.regularSeasonResult;
-  const qualifiers = activeLeague?.postseason?.qualifiers || [];
-  const qualifierUids = new Set(qualifiers.map((qualifier) => qualifier.uid));
-  const displayStandings = finalResult?.season === activeLeague?.season
+  const finalTable = finalResult?.season === activeLeague?.season;
+  const displayStandings = finalTable
     ? finalResult.standings.map((row) => ({
         teamUid: row.uid, teamName: row.teamName, rank: row.seed,
         gp: row.gp, wins: row.wins, losses: row.losses,
@@ -37,6 +50,19 @@ function StandingsPage() {
         streak: standings.find((liveRow) => liveRow.teamUid === row.uid)?.streak || "-",
       }))
     : standings;
+  const leagueSize = activeLeague?.memberIds?.length || activeLeague?.maxMembers || teams.length;
+  const qualifierCount = activeLeague?.postseason?.qualifierCount || (leagueSize ? playoffQualifierCount(leagueSize) : 2);
+  const currentRow = displayStandings.find((row) => row.teamUid === user.uid);
+  const raceInsight = deriveRaceInsight(displayStandings, qualifierCount, user.uid);
+  const presentationClockActive = games.some(
+    (game) => game.timeline?.length && !isOfficialGameFinalVisible(game, presentationNow),
+  );
+
+  useEffect(() => {
+    if (!presentationClockActive) return undefined;
+    const interval = window.setInterval(() => setPresentationNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [presentationClockActive]);
 
   useEffect(() => {
     if (!activeLeagueId || !activeLeague?.season) {
@@ -77,50 +103,44 @@ function StandingsPage() {
   useEffect(() => {
     if (!import.meta.env.DEV || loading) return;
     const mismatches = findRecordMismatches(standings);
-    if (mismatches.length && import.meta.env.DEV) console.warn("[Standings] Stored records differ from official results.", { count: mismatches.length });
+    if (mismatches.length) console.warn("[Standings] Stored records differ from official results.", { count: mismatches.length });
   }, [loading, standings]);
+
+  async function initializePostseason() {
+    setPlayoffBusy(true);
+    setPlayoffError("");
+    try {
+      await initializePlayoffs({ leagueId: activeLeagueId });
+    } catch (nextError) {
+      setPlayoffError(getUserFriendlyError(nextError, "Playoffs could not be prepared."));
+    } finally {
+      setPlayoffBusy(false);
+    }
+  }
 
   return (
     <PageLayout>
-      <section className="page-hero standings-hero">
-        <p className="section-label">SEASON {activeLeague?.season}</p>
-        <h1>Regular season <span>standings.</span></h1>
-        <p>{activeLeague?.seasonProgress?.regularSeasonComplete ? "REGULAR SEASON COMPLETE — Final seeds are frozen for postseason preparation." : "Live league table derived from completed official games."}</p>
-      </section>
-      <section className="standings-shell">
-        <header><div><span>{finalResult ? "FINAL REGULAR-SEASON TABLE" : "OFFICIAL LEAGUE TABLE"}</span><b>{activeLeague?.name}</b></div><small>{displayStandings.reduce((total, row) => total + row.gp, 0) / 2} completed games</small></header>
-        {loading ? <p className="standings-state">Loading official standings...</p> : error ? <p className="standings-state" role="alert">{error}</p> : (
-          <div className="standings-table-wrap"><table className="standings-table">
-            <thead><tr><th>RK</th><th>TEAM</th><th>GP</th><th>W</th><th>L</th><th>WIN%</th><th>PF</th><th>PA</th><th>DIFF</th><th>STREAK</th></tr></thead>
-            <tbody>{displayStandings.map((row) => (
-              <tr className={`${row.teamUid === user.uid ? "is-current" : ""} ${row.rank === 1 ? "is-top-seed" : ""}`} key={row.teamUid}>
-                <td><strong>{row.rank}</strong></td>
-                <td><span className="standings-team"><i>{row.teamName.slice(0, 2).toUpperCase()}</i><b>{row.teamName}</b><small>{finalResult ? qualifierUids.has(row.teamUid) ? "QUALIFIED" : "ELIMINATED" : row.teamUid === user.uid ? "YOUR TEAM" : ""} <Link className="gm-profile-link" to={`/profile/${row.teamUid}`}>GM PROFILE</Link></small></span></td>
-                <td>{row.gp}</td><td>{row.wins}</td><td>{row.losses}</td><td>{formatWinPercentage(row.winPercentage)}</td><td>{row.pointsFor}</td><td>{row.pointsAgainst}</td>
-                <td className={row.pointDifferential > 0 ? "is-positive" : row.pointDifferential < 0 ? "is-negative" : ""}>{row.pointDifferential > 0 ? "+" : ""}{row.pointDifferential}</td>
-                <td><em className={row.streak.startsWith("W") ? "is-winning" : row.streak.startsWith("L") ? "is-losing" : ""}>{row.streak}</em></td>
-              </tr>
-            ))}</tbody>
-          </table></div>
-        )}
-        {finalResult && (
-          <section className="playoff-field">
-            <div><span>POSTSEASON FIELD</span><b>{qualifiers.length} QUALIFIERS</b></div>
-            <ol>{qualifiers.map((team) => <li key={team.uid}><strong>#{team.seed}</strong><b>{team.teamName}</b><small>QUALIFIED</small></li>)}</ol>
-            <p>Seeds are final and ready for trusted playoff bracket initialization.</p>
-            {activeLeague?.postseason?.status === "ready" && activeLeague.commissionerUid === user.uid && (
-              <button className="button-primary" type="button" disabled={playoffBusy} onClick={async () => {
-                setPlayoffBusy(true); setPlayoffError("");
-                try { await initializePlayoffs({ leagueId: activeLeagueId }); } catch (nextError) { setPlayoffError(getUserFriendlyError(nextError, "Playoffs could not be prepared.")); } finally { setPlayoffBusy(false); }
-              }}>{playoffBusy ? "Initializing..." : "Initialize Playoffs"}</button>
-            )}
-            {playoffError && <p role="alert">{playoffError}</p>}
+      <main className="league-race-center">
+        <StandingsHeader league={activeLeague} qualifierCount={qualifierCount} finalTable={finalTable} />
+        {loading ? <StandingsSkeleton /> : error ? <section className="standings-empty" role="alert">{error}</section> : games.length === 0 ? (
+          <section className="standings-empty"><span>STANDINGS NOT AVAILABLE YET</span><h2>The league race begins when the season starts.</h2><p>Official completed games will automatically build the table.</p><Link className="button-primary" to={`/league/${activeLeagueId}`}>Go to League</Link></section>
+        ) : <>
+          <MyStandingSummary row={currentRow} leader={displayStandings[0]} qualifierCount={qualifierCount} />
+          <section className="race-surface">
+            <header><div><span>{finalTable ? "FINAL REGULAR-SEASON TABLE" : "LIVE LEAGUE TABLE"}</span><h2>{activeLeague?.name}</h2></div><small>{visibleGames.length} completed {visibleGames.length === 1 ? "game" : "games"}</small></header>
+            <StandingsTable rows={displayStandings} currentUid={user.uid} members={members} qualifierCount={qualifierCount} finalTable={finalTable} />
           </section>
-        )}
-        <footer>Ranking: WIN% · Wins · Point Differential · Points For · Team Name</footer>
-      </section>
+          <RaceInsight>{raceInsight}</RaceInsight>
+          {finalTable && <PostseasonControl league={activeLeague} user={user} busy={playoffBusy} error={playoffError} onInitialize={initializePostseason} />}
+        </>}
+      </main>
     </PageLayout>
   );
+}
+
+function PostseasonControl({ league, user, busy, error, onInitialize }) {
+  const playoffsActive = league.status === LEAGUE_STATUS.PLAYOFFS;
+  return <section className="postseason-control"><div><span>POSTSEASON</span><h2>{playoffsActive ? "The playoff bracket is live." : "Final seeds are ready."}</h2><p>The final regular-season order remains frozen.</p></div>{playoffsActive ? <Link className="button-primary" to="/playoffs">View Playoffs</Link> : league.postseason?.status === "ready" && league.commissionerUid === user.uid ? <button className="button-primary" type="button" disabled={busy} onClick={onInitialize}>{busy ? "Initializing..." : "Initialize Playoffs"}</button> : <span className="postseason-control__status">Waiting for the commissioner</span>}{error && <p className="postseason-control__error" role="alert">{error}</p>}</section>;
 }
 
 export default StandingsPage;

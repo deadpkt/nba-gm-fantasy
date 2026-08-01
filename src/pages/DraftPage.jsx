@@ -16,6 +16,7 @@ import { normalizeRosterConfig } from "../lib/rosterConfig";
 import { getDraftRosterFeasibility } from "../lib/lineupFeasibility";
 import { getUserFriendlyError } from "../lib/clientErrors";
 import { draftTurnIdentity, formatDraftClock, getDraftRemainingSeconds } from "../lib/draftTimer";
+import "../draftRoom.css";
 
 const positions = ["ALL", "PG", "SG", "SF", "PF", "C"];
 const DRAFT_PAGE_SIZE = 48;
@@ -132,8 +133,8 @@ function DraftPageContent() {
         <section className="draft-center__hero">
           <div className="draft-center__hero-copy">
             <p className="section-label">{activeLeague?.name || "LEAGUE"} // SHARED DRAFT</p>
-            <h1>Build your <span>dynasty.</span></h1>
-            <p>Every selection is synchronized across the league and permanently advances the shared snake draft.</p>
+            <h1>Draft <span>Room.</span></h1>
+            <p>Make your pick and track every franchise in real time.</p>
             <div className="draft-center__links"><Link to={`/league/${activeLeagueId}`}>← League Dashboard</Link></div>
           </div>
           <div className={`draft-center__pick ${isYourPick ? "is-your-pick" : ""}`}>
@@ -194,7 +195,8 @@ function DraftPageContent() {
                     player={player}
                     onAction={selectPlayer}
                     disabled={!isYourPick || timerExpired || !firestoreCatalogReady || roster.length >= rosterSize || busyPlayerId !== null || compositionBlocked}
-                    actionLabel={busyPlayerId === player.id ? "Drafting..." : timerExpired ? "Auto-picking..." : compositionBlocked ? `Needs ${candidateFeasibility.uncoveredPositions.join("/")}` : isYourPick ? "Draft player" : "Waiting for pick"}
+                    actionLabel={busyPlayerId === player.id ? "Drafting..." : timerExpired ? "Auto-picking..." : compositionBlocked ? `Needs ${candidateFeasibility.uncoveredPositions.join("/")}` : isYourPick ? "Draft" : "Waiting"}
+                    compact
                   />;
                 })}
               </div>

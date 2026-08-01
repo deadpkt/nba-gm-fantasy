@@ -330,53 +330,6 @@ export async function startLeagueSeason({ leagueId, userId }) {
   });
 }
 
-export async function leaveLeague({ leagueId, userId }) {
-  const leagueRef = doc(db, "leagues", leagueId);
-  const memberRef = doc(db, "leagues", leagueId, "members", userId);
-  const teamRef = doc(db, "leagues", leagueId, "teams", userId);
-  const userRef = doc(db, "users", userId);
-
-  await runTransaction(db, async (transaction) => {
-    const [leagueSnapshot, memberSnapshot, teamSnapshot, userSnapshot] =
-      await Promise.all([
-        transaction.get(leagueRef),
-        transaction.get(memberRef),
-        transaction.get(teamRef),
-        transaction.get(userRef),
-      ]);
-    if (!leagueSnapshot.exists() || !memberSnapshot.exists()) {
-      throw new Error("This league membership is unavailable.");
-    }
-
-    const league = leagueSnapshot.data();
-    if (league.status !== LEAGUE_STATUS.LOBBY) {
-      throw new Error("You can only leave while the league is in the lobby.");
-    }
-    if (league.commissionerUid === userId) {
-      throw new Error("The commissioner must cancel the league instead.");
-    }
-    if ((teamSnapshot.data()?.roster || []).length) {
-      throw new Error("Clear this franchise roster before leaving the league.");
-    }
-
-    transaction.update(leagueRef, {
-      memberIds: league.memberIds.filter((memberId) => memberId !== userId),
-      readyMemberIds: (league.readyMemberIds || []).filter(
-        (memberId) => memberId !== userId,
-      ),
-      updatedAt: serverTimestamp(),
-    });
-    transaction.delete(memberRef);
-    if (teamSnapshot.exists()) transaction.delete(teamRef);
-    if (userSnapshot.data()?.activeLeagueId === leagueId) {
-      transaction.update(userRef, {
-        activeLeagueId: null,
-        updatedAt: serverTimestamp(),
-      });
-    }
-  });
-}
-
 export async function cancelLeague({ leagueId, userId }) {
   const leagueRef = doc(db, "leagues", leagueId);
   await runTransaction(db, async (transaction) => {

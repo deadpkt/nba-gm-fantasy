@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import { getInternalReturnPath } from "../lib/routeAccess";
-import { getUserFriendlyError } from "../lib/clientErrors";
+import { getUserFriendlyError, reportClientError } from "../lib/clientErrors";
+import "../auth.css";
 
 function AuthForm({ mode }) {
   const isSignUp = mode === "signup";
@@ -21,14 +22,15 @@ function AuthForm({ mode }) {
     displayName: "",
     email: "",
     password: "",
+    confirmPassword: "",
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (user && !loading)
+    if (user && !loading && !submitting)
       navigate(getInternalReturnPath(location.state?.from), { replace: true });
-  }, [user, loading, location.state, navigate]);
+  }, [user, loading, submitting, location.state, navigate]);
 
   function updateField(event) {
     setForm((current) => ({
@@ -42,9 +44,14 @@ function AuthForm({ mode }) {
     setError("");
     setSubmitting(true);
     try {
+      if (isSignUp && form.password !== form.confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
       if (isSignUp) await signUp(form);
       else await login(form);
     } catch (authError) {
+      reportClientError(isSignUp ? "Email/password registration" : "Email/password login", authError);
       setError(
         getUserFriendlyError(
           authError,
@@ -62,6 +69,7 @@ function AuthForm({ mode }) {
     try {
       await signInWithGoogle();
     } catch (authError) {
+      reportClientError("Google sign-in", authError);
       setError(
         getUserFriendlyError(authError, "Could not sign in. Please try again."),
       );
@@ -85,7 +93,13 @@ function AuthForm({ mode }) {
       ? getUserFriendlyError(authError, "Could not sign in. Please try again.")
       : "");
   return (
-    <section className="auth-card">
+    <div className="auth-shell">
+      <section className="auth-brand" aria-label="FULL COURT">
+        <div className="auth-brand__mark" aria-hidden="true"><i /><i /><i /></div>
+        <div><p>FULL COURT</p><h2>Build the team.<br /><span>Own the era.</span></h2><small>Draft together. Compete live. Build a dynasty that lasts.</small></div>
+        <svg viewBox="0 0 460 300" aria-hidden="true"><path d="M20 20h420v260H20zM20 78h92v144H20M112 78v144M112 100a72 72 0 0 1 0 100M46 124v52M64 150h-18" /><circle cx="112" cy="150" r="50" /><path d="M20 48h28a155 155 0 0 1 0 204H20" /></svg>
+      </section>
+      <section className="auth-card">
       <p className="section-label">
         {isSignUp ? "JOIN THE LEAGUE" : "WELCOME BACK"}
       </p>
@@ -99,41 +113,45 @@ function AuthForm({ mode }) {
       </p>
       <form onSubmit={submit}>
         {isSignUp && (
-          <label>
-            Display name
+          <label className="auth-field">
             <input
               name="displayName"
+              placeholder=" "
               value={form.displayName}
               onChange={updateField}
               minLength="2"
               required
               autoComplete="name"
             />
+            <span>Display name</span>
           </label>
         )}
-        <label>
-          Email
+        <label className="auth-field">
           <input
             name="email"
             type="email"
+            placeholder=" "
             value={form.email}
             onChange={updateField}
             required
             autoComplete="email"
           />
+          <span>Email</span>
         </label>
-        <label>
-          Password
+        <label className="auth-field">
           <input
             name="password"
             type="password"
+            placeholder=" "
             value={form.password}
             onChange={updateField}
             minLength="6"
             required
             autoComplete={isSignUp ? "new-password" : "current-password"}
           />
+          <span>Password</span>
         </label>
+        {isSignUp && <label className="auth-field"><input name="confirmPassword" type="password" placeholder=" " value={form.confirmPassword} onChange={updateField} minLength="6" required autoComplete="new-password" /><span>Confirm password</span></label>}
         {message && (
           <p className="form-error" role="alert">
             {message}
@@ -141,7 +159,7 @@ function AuthForm({ mode }) {
         )}
         <button disabled={submitting}>
           {submitting
-            ? "Please wait..."
+            ? isSignUp ? "Creating account..." : "Signing in..."
             : isSignUp
               ? "Create account"
               : "Login"}
@@ -159,12 +177,13 @@ function AuthForm({ mode }) {
         <span aria-hidden="true">G</span> Continue with Google
       </button>
       <p className="auth-switch">
-        {isSignUp ? "Already have an account?" : "New to Full Court?"}{" "}
+        <span>{isSignUp ? "Already a GM?" : "New to FULL COURT?"}</span>
         <Link to={isSignUp ? "/login" : "/signup"} state={location.state}>
-          {isSignUp ? "Login" : "Create one"}
+          {isSignUp ? "Sign in" : "Create an account"}
         </Link>
       </p>
-    </section>
+      </section>
+    </div>
   );
 }
 

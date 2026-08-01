@@ -1,24 +1,12 @@
 import { Link } from "react-router-dom";
 import NotificationList from "./NotificationList";
 
-function NotificationDropdown({ notifications = [], onNavigate }) {
+function NotificationDropdown({ notifications = [], unreadCount = 0, loading = false, onOpen, onNavigate }) {
   return (
     <section className="notification-dropdown" aria-label="Notifications">
-      <header>
-        <div>
-          <span>NOTIFICATION CENTER</span>
-          <b>Latest updates</b>
-        </div>
-        <small>
-          {notifications.filter((notification) => !notification.read).length
-            ? `${notifications.filter((notification) => !notification.read).length} new`
-            : "All caught up"}
-        </small>
-      </header>
-      <NotificationList notifications={notifications} compact />
-      <Link to="/notifications" onClick={onNavigate}>
-        View notification center <span>→</span>
-      </Link>
+      <header><div><span>NOTIFICATIONS</span><b>Latest updates</b></div><small>{unreadCount ? `${unreadCount} new` : "All caught up"}</small></header>
+      {loading ? <div className="notification-dropdown__loading">Loading updates…</div> : <NotificationList notifications={notifications} compact onOpen={onOpen} />}
+      <Link to="/notifications" onClick={onNavigate}>View all notifications <span aria-hidden="true">→</span></Link>
     </section>
   );
 }

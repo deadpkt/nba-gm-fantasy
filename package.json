@@ -22,6 +22,11 @@
     "test:phase16": "node --test functions/test/nbaCatalog.test.js src/lib/playerCatalog.test.mjs src/lib/playerHeadshots.test.mjs",
     "test:phase17": "node --test functions/test/freeAgency.test.js src/lib/freeAgency.test.mjs",
     "test:phase18": "node --test functions/test/social.test.js src/lib/socialProfile.test.mjs",
+    "test:phase19": "node --test functions/test/notifications.test.js src/lib/notifications.test.mjs",
+    "test:phase19-rules": "firebase emulators:exec --only firestore \"node --test test/firestore/notifications.rules.test.mjs\"",
+    "test:phase20": "node --test functions/test/leagueActivity.test.js src/lib/leagueActivity.test.mjs",
+    "test:dev-logs": "node --test functions/test/devLogs.test.js src/lib/devLogs.test.mjs src/lib/adminAccess.test.mjs",
+    "test:dev-log-rules": "firebase emulators:exec --only firestore \"node --test test/firestore/devLogs.rules.test.mjs\"",
     "test:phase18-rules": "firebase emulators:exec --only firestore \"node --test test/firestore/social.rules.test.mjs\"",
     "test:profile": "node --test src/lib/profileAccess.test.mjs src/lib/profileMedia.test.mjs src/lib/imageCrop.test.mjs src/lib/socialProfile.test.mjs src/lib/socialUi.test.mjs",
     "test:lineup": "node --test src/utils/team.test.mjs src/lib/offseasonPreparation.test.mjs functions/test/lineup.test.js",
@@ -36,7 +41,8 @@
     "audit:legacy-player-data": "node scripts/migrateLegacyPlayerData.mjs",
     "migrate:legacy-player-data": "node scripts/migrateLegacyPlayerData.mjs --write --confirm",
     "preview": "vite preview",
-    "migrate:player-catalog-metadata": "node scripts/migratePlayerCatalogMetadata.mjs"
+    "migrate:player-catalog-metadata": "node scripts/migratePlayerCatalogMetadata.mjs",
+    "admin:claim": "node scripts/manageAdminClaim.mjs"
   },
   "dependencies": {
     "firebase": "^12.16.0",

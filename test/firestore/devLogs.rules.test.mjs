@@ -1,0 +1,11 @@
+import { readFile } from "node:fs/promises";
+import test, { after, before, beforeEach } from "node:test";
+import { assertFails, assertSucceeds, initializeTestEnvironment } from "@firebase/rules-unit-testing";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+let environment;
+before(async () => { environment = await initializeTestEnvironment({ projectId: "dev-log-rules", firestore: { rules: await readFile("firestore.rules", "utf8") } }); });
+beforeEach(async () => { await environment.clearFirestore(); await environment.withSecurityRulesDisabled(async (context) => { await context.firestore().doc("devLogs/v1_0_0").set({ version: "1.0.0", status: "published" }); await context.firestore().doc("devLogs/v1_1_0").set({ version: "1.1.0", status: "draft" }); }); });
+after(async () => environment.cleanup());
+test("public reads published updates but cannot read drafts", async () => { const database = environment.unauthenticatedContext().firestore(); await assertSucceeds(getDoc(doc(database, "devLogs/v1_0_0"))); await assertFails(getDoc(doc(database, "devLogs/v1_1_0"))); await assertSucceeds(getDocs(query(collection(database, "devLogs"), where("status", "==", "published")))); });
+test("admin claim reads drafts but all client writes remain blocked", async () => { const database = environment.authenticatedContext("owner", { admin: true }).firestore(); await assertSucceeds(getDoc(doc(database, "devLogs/v1_1_0"))); await assertFails(setDoc(doc(database, "devLogs/v2_0_0"), { status: "draft" })); });
+test("normal user cannot write Dev Logs", async () => { const database = environment.authenticatedContext("user").firestore(); await assertFails(setDoc(doc(database, "devLogs/v2_0_0"), { status: "published" })); });

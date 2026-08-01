@@ -9,6 +9,17 @@ const CODE_MESSAGES = Object.freeze({
   "already-exists": "That action is no longer available. Refresh and try again.",
   aborted: "That action is no longer available. Refresh and try again.",
   conflict: "That action is no longer available. Refresh and try again.",
+  "invalid-credential": "Email or password is incorrect.",
+  "user-not-found": "Email or password is incorrect.",
+  "wrong-password": "Email or password is incorrect.",
+  "email-already-in-use": "An account already exists for this email.",
+  "invalid-email": "Enter a valid email address.",
+  "missing-password": "Enter your password.",
+  "weak-password": "Use a stronger password with at least 6 characters.",
+  "too-many-requests": "Too many sign-in attempts. Please wait and try again.",
+  "operation-not-allowed": "Email and password sign-in is not enabled.",
+  "user-disabled": "This account has been disabled.",
+  "popup-closed-by-user": "Google sign-in was cancelled.",
 });
 
 function normalizeCode(code) {
