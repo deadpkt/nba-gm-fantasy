@@ -10,7 +10,7 @@ import { reportClientError } from "../lib/clientErrors";
 
 export const PlayersContext = createContext(null);
 
-export function PlayersProvider({ children }) {
+export function PlayersProvider({ children, catalogVersion = null }) {
   const [players, setPlayers] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(true);
   const [playersError, setPlayersError] = useState(null);
@@ -32,7 +32,7 @@ export function PlayersProvider({ children }) {
       setPlayersLoading(true);
       setPlayersError(null);
       try {
-        const catalog = await loadPlayerCatalog();
+        const catalog = await loadPlayerCatalog(catalogVersion);
         if (!active) return;
 
         setPlayers(catalog.players);
@@ -64,7 +64,7 @@ export function PlayersProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [reloadKey]);
+  }, [catalogVersion, reloadKey]);
 
   const value = useMemo(
     () => ({

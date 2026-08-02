@@ -33,6 +33,9 @@ import { buildFollowMutation, buildPublicProfile, validateFollowTarget } from ".
 import { createTrustedNotification, createTrustedNotifications, markTrustedNotificationRead, notificationEventId } from "./lib/notifications.js";
 import { activityEventId, createTrustedLeagueActivity } from "./lib/leagueActivity.js";
 import { devLogIdForVersion, newestPublished, normalizeDevLog } from "./shared/devLogs.js";
+import { publishRatingsPreview, rollbackPlayerCatalog } from "./lib/catalogPublication.js";
+import { catalogPlayersPath } from "./shared/catalogVersion.js";
+import { buildLeaguePlayerSnapshot } from "./shared/playerSnapshot.js";
 
 if (!getApps().length) initializeApp();
 
@@ -200,6 +203,22 @@ export const syncNbaPlayerCatalog = onCall({ secrets: [balldontlieApiKey], timeo
   catch (error) { throw new HttpsError("internal", `NBA catalog sync failed: ${error.message}`); }
 });
 
+const catalogPublicationError = (error) => {
+  if (error instanceof HttpsError) return error;
+  const code = error?.code === "permission-denied" ? "permission-denied" : /unavailable|not found/i.test(error?.message || "") ? "not-found" : /immutable|already|validation|required|preview/i.test(error?.message || "") ? "failed-precondition" : "internal";
+  return new HttpsError(code, error?.message || "Catalog publication failed.");
+};
+
+export const publishPlayerCatalog = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+  try { return await publishRatingsPreview({ db, auth: request.auth, ...(request.data || {}) }); }
+  catch (error) { throw catalogPublicationError(error); }
+});
+
+export const rollbackPlayerCatalogVersion = onCall(async (request) => {
+  try { return await rollbackPlayerCatalog({ db, auth: request.auth, ...(request.data || {}) }); }
+  catch (error) { throw catalogPublicationError(error); }
+});
+
 export const initializeLeagueContracts = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
   const { leagueId } = request.data || {};
@@ -233,14 +252,9 @@ export const initializeLeagueContracts = onCall(async (request) => {
 
 const DRAFT_LINEUP_POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 
-function draftPlayerSnapshot(snapshot) {
+function draftPlayerSnapshot(snapshot, capturedAt) {
   const player = { id: snapshot.id, ...snapshot.data() };
-  return {
-    id: player.id, name: player.name, position: player.position,
-    primaryPosition: player.primaryPosition, eligiblePositions: player.eligiblePositions,
-    team: player.team, overall: player.overall, image: player.image,
-    color: player.color || null, stats: player.stats,
-  };
+  return buildLeaguePlayerSnapshot(player, capturedAt);
 }
 
 function normalizedDraftLineup(roster, lineup = {}) {
@@ -292,10 +306,12 @@ export const makeDraftPick = onCall(async (request) => {
   const userId = request.auth.uid;
   const playerId = String(rawPlayerId);
   const leagueRef = db.doc(`leagues/${leagueId}`);
+  const catalogLeagueSnapshot = await leagueRef.get();
+  if (!catalogLeagueSnapshot.exists) throw new HttpsError("not-found", "The shared league is unavailable.");
   const draftRef = leagueRef.collection("draft").doc("state");
   const teamRef = leagueRef.collection("teams").doc(userId);
   const ownershipRef = leagueRef.collection("playerOwnership").doc(playerId);
-  const playerRef = db.doc(`playerCatalogs/current/players/${playerId}`);
+  const playerRef = db.doc(`${catalogPlayersPath(catalogLeagueSnapshot.data())}/${playerId}`);
   const pickRef = draftRef.collection("picks").doc(playerId);
   return db.runTransaction(async (transaction) => {
     const [leagueSnapshot, draftSnapshot, teamSnapshot, ownershipSnapshot, playerSnapshot, pickSnapshot] = await Promise.all([
@@ -314,7 +330,7 @@ export const makeDraftPick = onCall(async (request) => {
     if (ownershipSnapshot.exists || pickSnapshot.exists) throw new HttpsError("already-exists", "This player has already been drafted.");
     const catalogPlayer = playerSnapshot.data();
     if (catalogPlayer.active !== true || catalogPlayer.draftEligible !== true || String(catalogPlayer.id) !== playerId) throw new HttpsError("failed-precondition", "This player is not eligible for the shared draft.");
-    const player = draftPlayerSnapshot(playerSnapshot);
+    const player = draftPlayerSnapshot(playerSnapshot, now);
     return commitTrustedDraftSelection({ transaction, leagueRef, draftRef, teamRef, ownershipRef, pickRef, leagueId, league, draft, team: teamSnapshot.data(), player, selectionType: "manual", now });
   });
 });
@@ -446,9 +462,11 @@ export const syncDraftClock = onCall(async (request) => {
 });
 
 async function resolveExpiredDraft({ leagueId, expectedTurn, requesterUid = null }) {
-  const catalogSnapshot = await db.collection("playerCatalogs/current/players").where("active", "==", true).where("draftEligible", "==", true).get();
-  const catalogCandidates = catalogSnapshot.docs.map((snapshot) => ({ snapshot, player: { id: snapshot.id, ...snapshot.data() } }));
   const leagueRef = db.doc(`leagues/${leagueId}`);
+  const catalogLeagueSnapshot = await leagueRef.get();
+  if (!catalogLeagueSnapshot.exists) throw new HttpsError("not-found", "The shared Draft is unavailable.");
+  const catalogSnapshot = await db.collection(catalogPlayersPath(catalogLeagueSnapshot.data())).where("active", "==", true).where("draftEligible", "==", true).get();
+  const catalogCandidates = catalogSnapshot.docs.map((snapshot) => ({ snapshot, player: { id: snapshot.id, ...snapshot.data() } }));
   const draftRef = leagueRef.collection("draft").doc("state");
   return db.runTransaction(async (transaction) => {
     const [leagueSnapshot, draftSnapshot, ownershipSnapshot, picksSnapshot] = await Promise.all([
@@ -476,7 +494,7 @@ async function resolveExpiredDraft({ leagueId, expectedTurn, requesterUid = null
     const pickRef = draftRef.collection("picks").doc(selectedSnapshot.id);
     const [ownershipExact, pickExact] = await Promise.all([transaction.get(ownershipRef), transaction.get(pickRef)]);
     if (ownershipExact.exists || pickExact.exists) throw new HttpsError("aborted", "The selected player was claimed; retry automatic selection.");
-    return commitTrustedDraftSelection({ transaction, leagueRef, draftRef, teamRef, ownershipRef, pickRef, leagueId, league, draft, team: teamSnapshot.data(), player: draftPlayerSnapshot(selectedSnapshot), selectionType: "auto", now });
+    return commitTrustedDraftSelection({ transaction, leagueRef, draftRef, teamRef, ownershipRef, pickRef, leagueId, league, draft, team: teamSnapshot.data(), player: draftPlayerSnapshot(selectedSnapshot, now), selectionType: "auto", now });
   });
 }
 
@@ -501,12 +519,14 @@ export const repairPreseasonRoster = onCall(async (request) => {
   const addPlayerId = String(rawAddId);
   if (dropPlayerId === addPlayerId) throw new HttpsError("invalid-argument", "Choose two different players.");
   const leagueRef = db.doc(`leagues/${leagueId}`);
+  const catalogLeagueSnapshot = await leagueRef.get();
+  if (!catalogLeagueSnapshot.exists) throw new HttpsError("not-found", "Your league is unavailable.");
   const teamRef = leagueRef.collection("teams").doc(actorUid);
   const dropOwnershipRef = leagueRef.collection("playerOwnership").doc(dropPlayerId);
   const addOwnershipRef = leagueRef.collection("playerOwnership").doc(addPlayerId);
   const dropContractRef = leagueRef.collection("contracts").doc(dropPlayerId);
   const addContractRef = leagueRef.collection("contracts").doc(addPlayerId);
-  const addPlayerRef = db.doc(`playerCatalogs/current/players/${addPlayerId}`);
+  const addPlayerRef = db.doc(`${catalogPlayersPath(catalogLeagueSnapshot.data())}/${addPlayerId}`);
   return db.runTransaction(async (transaction) => {
     const [leagueSnapshot, teamSnapshot, dropOwnership, addOwnership, addPlayerSnapshot, dropContract, addContract, contractsSnapshot] = await Promise.all([
       transaction.get(leagueRef), transaction.get(teamRef), transaction.get(dropOwnershipRef), transaction.get(addOwnershipRef), transaction.get(addPlayerRef), transaction.get(dropContractRef), transaction.get(addContractRef), transaction.get(leagueRef.collection("contracts")),
@@ -517,7 +537,7 @@ export const repairPreseasonRoster = onCall(async (request) => {
     if (!addPlayerSnapshot.exists) throw new HttpsError("not-found", "The incoming canonical player is unavailable.");
     const canonical = addPlayerSnapshot.data();
     if (String(canonical.id) !== addPlayerId) throw new HttpsError("failed-precondition", "The incoming canonical player identity is invalid.");
-    const incoming = draftPlayerSnapshot(addPlayerSnapshot);
+    const incoming = draftPlayerSnapshot(addPlayerSnapshot, Timestamp.now());
     incoming.active = canonical.active;
     incoming.draftEligible = canonical.draftEligible;
     let repair;
@@ -568,10 +588,12 @@ function validateFreeAgencyRequest(request) {
 export const signFreeAgent = onCall(async (request) => {
   const { leagueId, playerId, actorUid } = validateFreeAgencyRequest(request);
   const leagueRef = db.doc(`leagues/${leagueId}`);
+  const catalogLeagueSnapshot = await leagueRef.get();
+  if (!catalogLeagueSnapshot.exists) throw new HttpsError("not-found", "This league is unavailable.");
   const teamRef = leagueRef.collection("teams").doc(actorUid);
   const ownershipRef = leagueRef.collection("playerOwnership").doc(playerId);
   const contractRef = leagueRef.collection("contracts").doc(playerId);
-  const playerRef = db.doc(`playerCatalogs/current/players/${playerId}`);
+  const playerRef = db.doc(`${catalogPlayersPath(catalogLeagueSnapshot.data())}/${playerId}`);
   return db.runTransaction(async (transaction) => {
     const [leagueSnapshot, teamSnapshot, playerSnapshot, ownershipSnapshot, contractSnapshot, contractsSnapshot] = await Promise.all([
       transaction.get(leagueRef),
@@ -587,6 +609,8 @@ export const signFreeAgent = onCall(async (request) => {
     const league = { id: leagueId, ...leagueSnapshot.data() };
     const team = { id: teamSnapshot.id, ...teamSnapshot.data() };
     const { catalogOrder: _catalogOrder, ...canonicalPlayer } = { id: playerSnapshot.id, ...playerSnapshot.data() };
+    const now = Timestamp.now();
+    const rosterPlayer = buildLeaguePlayerSnapshot(canonicalPlayer, now);
     let signing;
     try {
       signing = buildFreeAgentSigning({
@@ -594,6 +618,7 @@ export const signFreeAgent = onCall(async (request) => {
         team,
         contracts: contractsSnapshot.docs.map((snapshot) => snapshot.data()),
         player: canonicalPlayer,
+        rosterPlayer,
         actorUid,
         ownershipExists: ownershipSnapshot.exists,
         contractExists: contractSnapshot.exists,
@@ -601,7 +626,6 @@ export const signFreeAgent = onCall(async (request) => {
     } catch (error) {
       throw freeAgencyError(error);
     }
-    const now = Timestamp.now();
     transaction.update(teamRef, { roster: signing.roster, lineup: signing.lineup, updatedAt: now });
     transaction.create(ownershipRef, { playerId: canonicalPlayer.id, ownerUid: actorUid, teamId: actorUid, updatedAt: now });
     transaction.create(contractRef, { ...signing.contract, createdAt: now, updatedAt: now });
@@ -646,7 +670,7 @@ export const releasePlayer = onCall(async (request) => {
   });
 });
 
-function buildStartedGame(game, homeTeam, awayTeam, startedAt, rosterSize = 5) {
+function buildStartedGame(game, homeTeam, awayTeam, startedAt, rosterSize = 5, league = {}) {
   const window = buildPresentationWindow(startedAt.toMillis());
   return buildOfficialGameActivation({
     game,
@@ -655,6 +679,7 @@ function buildStartedGame(game, homeTeam, awayTeam, startedAt, rosterSize = 5) {
     startedAt,
     endsAt: Timestamp.fromMillis(window.endsAtMs),
     rosterSize,
+    league,
   });
 }
 
@@ -718,7 +743,7 @@ export const startPlayoffRound = onCall(async (request) => {
     const tasks = gameSnapshots.map((snapshot) => {
       const game = { id: snapshot.id, ...snapshot.data() };
       let update;
-      try { update = buildStartedGame(game, teams.get(game.homeUid), teams.get(game.awayUid), now, normalizeRosterConfig(league).rosterSize); } catch (error) { throw new HttpsError("failed-precondition", error.message); }
+      try { update = buildStartedGame(game, teams.get(game.homeUid), teams.get(game.awayUid), now, normalizeRosterConfig(league).rosterSize, league); } catch (error) { throw new HttpsError("failed-precondition", error.message); }
       transaction.update(snapshot.ref, update);
       return { leagueId, id: game.id, endsAt: update.presentation.endsAt };
     });
@@ -828,7 +853,7 @@ export const startRegularSeasonRound = onCall(async (request) => {
     const now = Timestamp.now();
     const tasks = games.map((game) => {
       let update;
-      try { update = buildStartedGame({ ...game, id: game.ref.id }, teams.get(game.homeUid), teams.get(game.awayUid), now, normalizeRosterConfig(league).rosterSize); } catch (error) { throw new HttpsError("failed-precondition", error.message); }
+      try { update = buildStartedGame({ ...game, id: game.ref.id }, teams.get(game.homeUid), teams.get(game.awayUid), now, normalizeRosterConfig(league).rosterSize, league); } catch (error) { throw new HttpsError("failed-precondition", error.message); }
       transaction.update(game.ref, update);
       return { leagueId, id: game.ref.id, endsAt: update.presentation.endsAt };
     });
@@ -1113,13 +1138,13 @@ async function produceRosterMovementActivity(event, type) {
   const ownership = event.data?.data();
   if (!ownership?.ownerUid) return;
   const { leagueId, playerId } = event.params;
-  const [league, member, team, player] = await Promise.all([
-    db.doc(`leagues/${leagueId}`).get(),
+  const league = await db.doc(`leagues/${leagueId}`).get();
+  if (!league.exists || league.data().status !== "offseason") return;
+  const [member, team, player] = await Promise.all([
     db.doc(`leagues/${leagueId}/members/${ownership.ownerUid}`).get(),
     db.doc(`leagues/${leagueId}/teams/${ownership.ownerUid}`).get(),
-    db.doc(`playerCatalogs/current/players/${playerId}`).get(),
+    db.doc(`${catalogPlayersPath(league.data())}/${playerId}`).get(),
   ]);
-  if (!league.exists || league.data().status !== "offseason") return;
   const signed = type === "free_agent_signed";
   await createTrustedLeagueActivity(db, leagueId, {
     id: activityEventId(signed ? "free-agent-signed" : "player-released", league.data().season, ownership.ownerUid, playerId, ownership.updatedAt?.toMillis?.() || "legacy"),

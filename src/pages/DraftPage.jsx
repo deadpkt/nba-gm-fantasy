@@ -220,7 +220,8 @@ function DraftPageContent() {
 }
 
 function DraftPage() {
-  return <PlayersProvider><DraftProvider><DraftPageContent /></DraftProvider></PlayersProvider>;
+  const { activeLeague } = useLeague();
+  return <PlayersProvider catalogVersion={activeLeague?.catalogVersion || null}><DraftProvider><DraftPageContent /></DraftProvider></PlayersProvider>;
 }
 
 export default DraftPage;

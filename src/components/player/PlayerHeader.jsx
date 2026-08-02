@@ -1,6 +1,8 @@
 import PlayerImage from "./PlayerImage";
+import { getPlayerOverall } from "../../lib/playerRatingCompatibility";
 
 function PlayerHeader({ player }) {
+  const overall = getPlayerOverall(player);
   const accent = player.color || "#e32842";
   const positions =
     (player.eligiblePositions || [player.position])
@@ -28,9 +30,9 @@ function PlayerHeader({ player }) {
         </p>
       </div>
       <div
-        className={`player-details__overall ${player.overall >= 94 ? "is-elite" : ""}`}
+        className={`player-details__overall ${overall >= 94 ? "is-elite" : ""}`}
       >
-        <b>{player.overall ?? "—"}</b>
+        <b>{overall}</b>
         <small>GAME OVR</small>
       </div>
     </header>

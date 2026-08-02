@@ -1,4 +1,5 @@
-const API_BASE = "https://api.balldontlie.io/v1";
+const API_ORIGIN = "https://api.balldontlie.io";
+const API_BASE = `${API_ORIGIN}/v1`;
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -16,8 +17,9 @@ export function createBalldontlieClient({
 }) {
   if (!apiKey) throw new Error("BALLDONTLIE_API_KEY is not configured.");
   let lastRequestAt = 0;
+  const metrics = { requestCount: 0, retryCount: 0 };
   async function request(path, params = {}) {
-    const url = new URL(`${API_BASE}${path}`);
+    const url = new URL(`${path.startsWith("/nba/") ? API_ORIGIN : API_BASE}${path}`);
     Object.entries(params).forEach(([key, value]) => {
       if (value === undefined || value === null) return;
       if (Array.isArray(value)) value.forEach((item) => url.searchParams.append(`${key}[]`, String(item)));
@@ -31,6 +33,7 @@ export function createBalldontlieClient({
       const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
       let response;
       try {
+        metrics.requestCount += 1;
         response = await fetchImpl(url, {
           headers: { Authorization: apiKey, Accept: "application/json" },
           signal: controller.signal,
@@ -44,8 +47,10 @@ export function createBalldontlieClient({
       } finally {
         clearTimeout(timeout);
       }
-      if ([401, 403, 404].includes(response.status)) throw new ProviderCapabilityError(`Provider access unavailable for ${path}.`, response.status);
+      if ([401, 403].includes(response.status)) throw new ProviderCapabilityError(`Your BALLDONTLIE plan does not appear to allow ${path}.`, response.status);
+      if (response.status === 404) throw new ProviderCapabilityError(`Provider endpoint unavailable: ${path}.`, response.status);
       if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+        metrics.retryCount += 1;
         const retryHeader = response.headers.get("retry-after");
         const retrySeconds = retryHeader === null ? Number.NaN : Number(retryHeader);
         const retryMs = Number.isFinite(retrySeconds) ? retrySeconds * 1000 : 500 * (2 ** attempt);
@@ -56,10 +61,10 @@ export function createBalldontlieClient({
       throw new Error(`BALLDONTLIE ${path} failed with HTTP ${response.status}.`);
     }
   }
-  return { request };
+  return { request, getMetrics: () => ({ ...metrics }) };
 }
 
-export async function fetchAllCursorPages(fetchPage, { logger = () => {}, maxPages = 1_000, label = "player" } = {}) {
+export async function fetchAllCursorPages(fetchPage, { logger = () => {}, maxPages = 1_000, label = "player", dedupe = true, idSelector = (row) => row?.id } = {}) {
   const rows = [];
   const ids = new Set();
   const seenCursors = new Set();
@@ -72,7 +77,7 @@ export async function fetchAllCursorPages(fetchPage, { logger = () => {}, maxPag
     const response = await fetchPage(cursor);
     if (!Array.isArray(response?.data)) throw new Error("Provider response is missing a data array.");
     logger(`Fetched ${response.data.length} players (page ${page}; ${rows.length + response.data.length} received so far).`);
-    response.data.forEach((row) => { if (!ids.has(row.id)) { ids.add(row.id); rows.push(row); } });
+    response.data.forEach((row) => { const id = idSelector(row); if (!dedupe || id === undefined || id === null || !ids.has(String(id))) { if (dedupe && id !== undefined && id !== null) ids.add(String(id)); rows.push(row); } });
     if (response.data.length === 0) {
       logger("Provider returned an empty page; pagination complete.");
       return rows;

@@ -144,8 +144,9 @@ function RepairContent({ roster, onClose }) {
 }
 
 export default function PreseasonRosterRepair(props) {
+  const { activeLeague } = useLeague();
   return (
-    <PlayersProvider>
+    <PlayersProvider catalogVersion={activeLeague?.catalogVersion || null}>
       <RepairContent {...props} />
     </PlayersProvider>
   );

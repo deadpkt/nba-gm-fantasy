@@ -33,6 +33,7 @@ const StandingsPage = lazy(() => import("./pages/StandingsPage"));
 const TradeCenterPage = lazy(() => import("./pages/TradeCenterPage"));
 const UpdatesPage = lazy(() => import("./pages/UpdatesPage"));
 const AdminDevLogPage = lazy(() => import("./pages/AdminDevLogPage"));
+const AdminRatingsPreviewPage = lazy(() => import("./pages/AdminRatingsPreviewPage"));
 
 const protectedPage = (page) => <ProtectedRoute>{page}</ProtectedRoute>;
 const leaguePhasePage = (page, statuses) =>
@@ -79,6 +80,7 @@ function App() {
       <Route path="/profile/:uid" element={<ProfileRouteGuard><PublicProfilePage /></ProfileRouteGuard>} />
       <Route path="/settings" element={protectedPage(<SettingsPage />)} />
       <Route path="/admin/dev-log" element={protectedPage(<AdminRoute><AdminDevLogPage /></AdminRoute>)} />
+      <Route path="/admin/nba-data/ratings-preview" element={protectedPage(<AdminRoute><AdminRatingsPreviewPage /></AdminRoute>)} />
       <Route path="/draft" element={<Navigate to="/league/draft" replace />} />
       <Route path="/leagues" element={<Navigate to="/league" replace />} />
       <Route path="*" element={<NotFoundPage />} />

@@ -19,6 +19,8 @@ async function commitChunks(db, operations, size = 400, logger = () => {}) {
 export async function syncNbaCatalog({ db, apiKey, now = new Date().toISOString(), logger = () => {} }) {
   const catalogRef = db.doc("playerCatalogs/current");
   const syncRef = db.doc("playerCatalogs/syncStatus");
+  const pointer = await catalogRef.get();
+  if (pointer.data()?.catalogVersion) throw new Error("Legacy catalog sync is frozen after versioned catalog activation. Generate and publish a new version instead.");
   logger("Recording catalog sync start in Firestore...");
   await syncRef.set({ status: "running", provider: "balldontlie", startedAt: now, syncVersion: CATALOG_SYNC_VERSION }, { merge: true });
   try {

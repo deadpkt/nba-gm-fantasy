@@ -56,7 +56,7 @@ export function presentationPhase(event) {
   if (!event) return "Q1";
   if (event.eventType === "game_end") return "FINAL";
   if (event.eventType === "halftime") return "HALFTIME";
-  return `Q${event.quarter}`;
+  return event.quarter > 4 ? `OT${event.quarter - 4}` : `Q${event.quarter}`;
 }
 
 const EVENT_LABELS = {

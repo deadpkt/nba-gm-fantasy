@@ -11,6 +11,7 @@ import { createInitialLeagueTeam, isLeagueTeamSeasonReady } from "./leagueTeams"
 import { LEAGUE_STATUS } from "./leagueStatuses";
 import { createSeasonConfig } from "./seasonConfig";
 import { normalizeSeasonConfig } from "./seasonConfig";
+import { resolveLeagueEngineVersions } from "./engineVersions";
 import { createRosterConfig, normalizeRosterConfig } from "./rosterConfig";
 import { createSeasonProgress } from "./seasonProgress";
 import {
@@ -27,6 +28,14 @@ const displayName = (user) =>
 export async function createLeague({ user, name, maxMembers, seasonPreset }) {
   const seasonConfig = createSeasonConfig(maxMembers, seasonPreset);
   const rosterConfig = createRosterConfig();
+  const catalogSnapshot = await getDoc(doc(db, "playerCatalogs", "current"));
+  const catalogMetadata = catalogSnapshot.exists() ? catalogSnapshot.data() : {};
+  const catalogPins = {
+    catalogVersion: catalogMetadata.catalogVersion || "legacy-current",
+    ratingsVersion: Number.isInteger(catalogMetadata.ratingsVersion) ? catalogMetadata.ratingsVersion : 1,
+    formulaVersion: catalogMetadata.formulaVersion || "legacy-v1",
+    simulationVersion: 1,
+  };
   const leagueId = createLeagueCode();
   const leagueRef = doc(db, "leagues", leagueId);
   const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
@@ -44,6 +53,7 @@ export async function createLeague({ user, name, maxMembers, seasonPreset }) {
     season: 1,
     seasonConfig,
     rosterConfig,
+    ...catalogPins,
     inviteCode: leagueId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -298,6 +308,7 @@ export async function startLeagueSeason({ leagueId, userId }) {
       seasonConfig,
       teamNames,
     });
+    const seasonEngineVersions = resolveLeagueEngineVersions(league);
     const gameRefs = generatedSchedule.games.map((game) =>
       doc(db, "leagues", leagueId, "games", game.id),
     );
@@ -319,6 +330,7 @@ export async function startLeagueSeason({ leagueId, userId }) {
     transaction.update(leagueRef, {
       status: LEAGUE_STATUS.REGULAR_SEASON,
       seasonConfig,
+      seasonEngineVersions,
       schedule: {
         ...generatedSchedule.metadata,
         generatedAt: serverTimestamp(),

@@ -6,7 +6,7 @@ function validTeam(team, uid, league) {
   return (team?.ownerUid || team?.id) === uid && validateStartingLineup(team, normalizeRosterConfig(league).rosterSize).valid;
 }
 
-export const NEXT_SEASON_FIELDS_TO_CLEAR = Object.freeze(["regularSeasonResult", "postseason", "seasonProgress", "schedule", "seasonStartedAt", "offseason"]);
+export const NEXT_SEASON_FIELDS_TO_CLEAR = Object.freeze(["regularSeasonResult", "postseason", "seasonProgress", "schedule", "seasonStartedAt", "seasonEngineVersions", "offseason"]);
 
 export function isNextSeasonCommissioner(league, uid) {
   return typeof uid === "string" && league?.commissionerUid === uid;

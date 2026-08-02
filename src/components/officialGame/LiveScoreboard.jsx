@@ -2,6 +2,7 @@ import { presentationPhase } from "../../lib/officialGamePresentation";
 
 function phaseLabel(event) {
   if (event?.eventType === "quarter_end") return `END Q${event.quarter}`;
+  if (event?.eventType === "overtime_end") return `END OT${event.quarter - 4}`;
   return presentationPhase(event);
 }
 

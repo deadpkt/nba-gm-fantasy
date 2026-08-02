@@ -106,6 +106,50 @@ service cloud.firestore {
         && schedule.generatedAt == request.time;
     }
 
+    function hasValidEngineVersions(versions) {
+      return versions.keys().hasOnly([
+          'ratingsVersion', 'simulationVersion', 'eventSchemaVersion',
+          'contractModelVersion'
+        ])
+        && versions.contractModelVersion == 1
+        && ((versions.ratingsVersion == 1
+            && versions.simulationVersion == 1
+            && versions.eventSchemaVersion == 1)
+          || (versions.ratingsVersion == 2
+            && versions.simulationVersion == 2
+            && versions.eventSchemaVersion == 2));
+    }
+
+    function hasValidCatalogPins(leagueData) {
+      let current = get(/databases/$(database)/documents/playerCatalogs/current).data;
+      return leagueData.catalogVersion is string
+        && leagueData.formulaVersion is string
+        && leagueData.ratingsVersion is int
+        && leagueData.simulationVersion == 1
+        && ((current.keys().hasAny(['catalogVersion'])
+            && leagueData.catalogVersion == current.catalogVersion
+            && leagueData.ratingsVersion == current.ratingsVersion
+            && leagueData.formulaVersion == current.formulaVersion)
+          || (!current.keys().hasAny(['catalogVersion'])
+            && leagueData.catalogVersion == 'legacy-current'
+            && leagueData.ratingsVersion == 1
+            && leagueData.formulaVersion == 'legacy-v1'));
+    }
+
+    function hasValidFrozenSeasonEngines(beforeData, afterData) {
+      let defaultVersions = {
+        'ratingsVersion': 1,
+        'simulationVersion': 1,
+        'eventSchemaVersion': 1,
+        'contractModelVersion': 1
+      };
+      return hasValidEngineVersions(afterData.seasonEngineVersions)
+        && afterData.seasonEngineVersions
+          == (beforeData.keys().hasAny(['engineVersions'])
+            ? beforeData.engineVersions
+            : defaultVersions);
+    }
+
     function hasInitialSeasonProgress(leagueData) {
       let progress = leagueData.seasonProgress;
       return progress.keys().hasOnly([
@@ -268,11 +312,21 @@ service cloud.firestore {
     // The catalog is published by a trusted server-side workflow. Clients can
     // read it but must never be able to alter the shared player pool.
     match /playerCatalogs/{catalogId} {
-      allow get: if signedIn() && catalogId == 'current';
+      allow get: if signedIn() && (catalogId == 'current' || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
 
       match /players/{playerId} {
-        allow get, list: if signedIn() && catalogId == 'current';
+        allow get, list: if signedIn()
+          && (catalogId == 'current'
+            || get(/databases/$(database)/documents/playerCatalogs/$(catalogId)).data.status == 'published');
+        allow create, update, delete: if false;
       }
+    }
+
+    match /playerCatalogPublicationHistory/{historyId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /users/{userId} {
@@ -292,6 +346,18 @@ service cloud.firestore {
         allow list, write: if false;
       }
 
+    }
+
+    // Trusted Admin SDK workflows may stage bounded Ratings V2 previews.
+    // Clients, including admins, cannot create or mutate preview data.
+    match /playerDataImports/{importId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+
+      match /players/{playerId} {
+        allow get, list: if isAdmin();
+        allow create, update, delete: if false;
+      }
     }
 
     match /publicProfiles/{userId} {
@@ -327,8 +393,10 @@ service cloud.firestore {
       allow get: if signedIn();
       allow create: if signedIn()
         && request.resource.data.commissionerUid == request.auth.uid
+        && !request.resource.data.keys().hasAny(['engineVersions', 'seasonEngineVersions'])
         && hasValidSeasonConfig(request.resource.data)
         && hasCurrentRosterConfig(request.resource.data)
+        && hasValidCatalogPins(request.resource.data)
         && request.resource.data.memberIds.size() == 1
         && request.resource.data.memberIds[0] == request.auth.uid
         && request.resource.data.readyMemberIds.size() == 0
@@ -350,8 +418,9 @@ service cloud.firestore {
           && request.resource.data.status == 'regular_season'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'seasonConfig', 'schedule', 'seasonProgress',
-            'seasonStartedAt', 'updatedAt'
+            'seasonStartedAt', 'seasonEngineVersions', 'updatedAt'
           ])
+          && hasValidFrozenSeasonEngines(resource.data, request.resource.data)
           && hasValidScheduleMetadata(request.resource.data)
           && hasInitialSeasonProgress(request.resource.data)
           && seasonReadyMemberIds(resource.data).size() == resource.data.memberIds.size()

@@ -87,7 +87,8 @@ function FreeAgencyContent() {
 }
 
 function FreeAgencyPage() {
-  return <PlayersProvider><FreeAgencyContent /></PlayersProvider>;
+  const { activeLeague } = useLeague();
+  return <PlayersProvider catalogVersion={activeLeague?.catalogVersion || null}><FreeAgencyContent /></PlayersProvider>;
 }
 
 export default FreeAgencyPage;

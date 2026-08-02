@@ -26,8 +26,15 @@ dist-ssr
 # Environment files
 .env
 .env.*
+!.env.example
 
 # Firebase secrets
 serviceAccount*.json
 *firebase-adminsdk*.json
 .firebase/
+
+# Local provider imports and generated Ratings previews
+goat-ratings-preview-*.json
+goat-ratings-input-*.json
+goat-ratings-cache-*.json
+ratings-v2-preview*.json

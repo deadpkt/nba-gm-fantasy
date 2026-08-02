@@ -5,6 +5,9 @@ export const DIRECTORY_BASELINE_RATING = 75;
 export const GAME_RATING_MIN = 60;
 export const GAME_RATING_MAX = 99;
 export const DEFAULT_PLAYER_COLOR = "#526981";
+export const POSITION_MAPPING_VERSION = "canonical-positions-v1";
+import { RATINGS_VERSION_V1, RATINGS_VERSION_V2 } from "./engineVersions.js";
+import { isValidRatingsV2 } from "./playerRatingsV2.js";
 
 // Intentional game-balance tuning belongs here. Persisted catalog values are
 // never treated as implicit overrides.
@@ -145,7 +148,7 @@ function compatibilityStats(providerStats) {
   };
 }
 
-export function buildCanonicalPlayer({ providerPlayer, existingPlayer = null, active, syncedAt, providerStats = null, currentSeason = null, verificationStrategy = null, headshotEnrichment = null, headshotVersion = null }) {
+export function buildCanonicalPlayer({ providerPlayer, existingPlayer = null, active, syncedAt, providerStats = null, verifiedRatings = null, currentSeason = null, verificationStrategy = null, headshotEnrichment = null, headshotVersion = null }) {
   if (!Number.isInteger(providerPlayer?.id)) throw new Error("BALLDONTLIE player ID must be an integer.");
   const fullName = `${providerPlayer.first_name || ""} ${providerPlayer.last_name || ""}`.trim();
   if (!fullName) throw new Error("Provider player name is required.");
@@ -153,7 +156,9 @@ export function buildCanonicalPlayer({ providerPlayer, existingPlayer = null, ac
   const position = normalizePosition(providerPlayer.position, id);
   const stats = providerStats?.available ? compatibilityStats(providerStats) : compatibilityStats(null);
   const ratingOverride = PLAYER_RATING_OVERRIDES[String(id)] || PLAYER_RATING_OVERRIDES[`bdl_${providerPlayer.id}`] || null;
-  const ratings = calculateGameRatings(providerStats, position.primaryPosition, ratingOverride);
+  if (verifiedRatings && !isValidRatingsV2(verifiedRatings)) throw new Error("Verified Ratings V2 are malformed.");
+  const ratings = verifiedRatings || calculateGameRatings(providerStats, position.primaryPosition, ratingOverride);
+  const ratingsVersion = verifiedRatings ? RATINGS_VERSION_V2 : RATINGS_VERSION_V1;
   const existingNbaPlayerId = existingPlayer?.nbaPlayerId || existingPlayer?.headshot?.nbaPlayerId || null;
   const nbaPlayerId = headshotEnrichment?.nbaPlayerId || existingNbaPlayerId;
   const existingImageUrl = existingPlayer?.imageUrl || existingPlayer?.image;
@@ -173,6 +178,7 @@ export function buildCanonicalPlayer({ providerPlayer, existingPlayer = null, ac
     // become the fallback when the provider reports no current team.
     team: providerPlayer.team?.abbreviation || "FA",
     overall: ratings.overall,
+    ratingsVersion,
     stats,
     ratings,
     nbaPlayerId,
@@ -192,7 +198,7 @@ export function buildCanonicalPlayer({ providerPlayer, existingPlayer = null, ac
       nbaTeam: normalizeNbaTeam(providerPlayer.team),
       stats: providerStats?.available ? stripUndefinedValues(providerStats) : null,
     },
-    gameData: { ratings, positionOverride: POSITION_OVERRIDES[String(id)] || null },
+    gameData: { ratings, ratingsVersion, positionOverride: POSITION_OVERRIDES[String(id)] || null },
     source: { provider: "balldontlie", externalId: providerPlayer.id, syncedAt, dataVersion: CATALOG_SYNC_VERSION, statsMode: providerStats?.available ? "enriched" : "directory-fallback", verificationStrategy },
   });
 }

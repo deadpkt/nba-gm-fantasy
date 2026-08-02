@@ -20,6 +20,7 @@ function MobileNavigationDrawer({ open, onClose, onLogout, items = [], navigatio
         <NavLink to="/notifications" tabIndex={open ? 0 : -1} onClick={onClose}><UiIcon name="bell"/><span>Notifications</span></NavLink>
         <NavLink to="/updates" tabIndex={open ? 0 : -1} onClick={onClose}><UiIcon name="info"/><span>What’s New {updatesUnseen && <small className="updates-new-badge">New</small>}</span></NavLink>
         {admin && <NavLink to="/admin/dev-log" tabIndex={open ? 0 : -1} onClick={onClose}><UiIcon name="pen"/><span>Dev Log Admin</span></NavLink>}
+        {admin && <NavLink to="/admin/nba-data/ratings-preview" tabIndex={open ? 0 : -1} onClick={onClose}><UiIcon name="info"/><span>Ratings Preview</span></NavLink>}
         <NavLink to="/settings" tabIndex={open ? 0 : -1} onClick={onClose}><UiIcon name="settings"/><span>Settings</span></NavLink>
         <button type="button" tabIndex={open ? 0 : -1} onClick={() => { onClose(); onLogout(); }}><UiIcon name="logout"/><span>Logout</span></button>
       </div>

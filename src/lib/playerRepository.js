@@ -2,8 +2,10 @@ import { collection, doc, getDoc, getDocs, query, where } from "firebase/firesto
 import { db, firebaseEnabled } from "./firebase";
 import { dedupeCatalogPlayers, isCanonicalCatalogPlayer, RUNTIME_PLAYER_CATALOG_SOURCE } from "./playerCatalog";
 import { resolvePlayerHeadshot } from "./playerHeadshots";
+import { isValidRatingsV2 } from "./playerRatingCompatibility";
 
 const catalogRef = () => doc(db, "playerCatalogs", "current");
+const catalogCollectionId = (metadata, requestedVersion) => { const version = requestedVersion || metadata?.catalogVersion || "current"; return version === "legacy-current" ? "current" : version; };
 
 const emptyDiagnostics = () => ({ total: 0, valid: 0, invalid: [] });
 
@@ -38,6 +40,7 @@ export function validateCatalogPlayer(player, documentId) {
     return invalid("invalid-stats");
   }
   if (!Number.isFinite(player.overall)) return invalid("invalid-overall");
+  if (player.ratingsVersion === 2 && !isValidRatingsV2(player.ratings)) return invalid("invalid-ratings-v2");
   if (typeof player.primaryPosition !== "string" || !player.primaryPosition)
     return invalid("missing-primary-position");
   if (!Array.isArray(player.eligiblePositions) || !player.eligiblePositions.length)
@@ -46,12 +49,12 @@ export function validateCatalogPlayer(player, documentId) {
   return { valid: true, player: { ...player, imageUrl, image: imageUrl } };
 }
 
-export async function loadCatalogPlayerById(playerId) {
+export async function loadCatalogPlayerById(playerId, catalogVersion = null) {
   if (playerId === undefined || playerId === null || playerId === "") return null;
   if (!firebaseEnabled || !db) return null;
-  const playerDocument = await getDoc(
-    doc(db, "playerCatalogs", "current", "players", String(playerId)),
-  );
+  const current = await getDoc(catalogRef());
+  const resolvedVersion = catalogCollectionId(current.data(), catalogVersion);
+  const playerDocument = await getDoc(doc(db, "playerCatalogs", resolvedVersion, "players", String(playerId)));
   if (!playerDocument.exists()) return null;
   const { catalogOrder: _catalogOrder, ...player } = playerDocument.data();
   const validation = validateCatalogPlayer(player, playerDocument.id);
@@ -92,7 +95,7 @@ function validatePlayers(entries) {
   return { players: validEntries.map((entry) => entry.player), diagnostics };
 }
 
-async function loadFirestorePlayerCatalog() {
+async function loadFirestorePlayerCatalog(catalogVersion = null) {
   if (!firebaseEnabled || !db) {
     throw catalogError("firebase-unavailable", "Firebase is not configured.");
   }
@@ -105,9 +108,10 @@ async function loadFirestorePlayerCatalog() {
     );
   }
 
+  const resolvedVersion = catalogCollectionId(currentCatalog.data(), catalogVersion);
   const playersSnapshot = await getDocs(
     query(
-      collection(db, "playerCatalogs", "current", "players"),
+      collection(db, "playerCatalogs", resolvedVersion, "players"),
       where("active", "==", true),
       where("draftEligible", "==", true),
     ),
@@ -122,7 +126,7 @@ async function loadFirestorePlayerCatalog() {
       return { player, documentId: playerDocument.id, catalogOrder, index };
     }),
   );
-  return { ...validated, players: dedupeCatalogPlayers(validated.players.filter(isCanonicalCatalogPlayer)), metadata: currentCatalog.data() };
+  return { ...validated, players: dedupeCatalogPlayers(validated.players.filter(isCanonicalCatalogPlayer)), metadata: { ...currentCatalog.data(), resolvedVersion } };
 }
 
 function unavailableResult(error, firestoreDiagnostics = emptyDiagnostics()) {
@@ -141,9 +145,9 @@ function unavailableResult(error, firestoreDiagnostics = emptyDiagnostics()) {
 
 // This is the only data-source adapter used by the player provider. A future
 // NBA API adapter can be added here without changing roster or UI contracts.
-export async function loadPlayerCatalog() {
+export async function loadPlayerCatalog(catalogVersion = null) {
   try {
-    const firestore = await loadFirestorePlayerCatalog();
+    const firestore = await loadFirestorePlayerCatalog(catalogVersion);
     if (firestore.players.length) {
       return {
         players: firestore.players,

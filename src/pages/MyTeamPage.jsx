@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import BasketballCourt from "../components/BasketballCourt";
 import PageLayout from "../components/PageLayout";
 import PreseasonRosterRepair from "../components/PreseasonRosterRepair";
 import RosterPlayerChip from "../components/RosterPlayerChip";
+import TeamIdentitySummary from "../components/team/TeamIdentitySummary";
 import useAuth from "../hooks/useAuth";
 import useLeague from "../hooks/useLeague";
 import useLeagueTeam from "../hooks/useLeagueTeam";
@@ -16,6 +17,7 @@ import { normalizeOffseasonPreparation } from "../lib/offseasonPreparation";
 import { getLeagueStatusLabel, LEAGUE_STATUS } from "../lib/leagueStatuses";
 import { normalizeRosterConfig } from "../lib/rosterConfig";
 import { canBuildLegalStartingFive } from "../lib/lineupFeasibility";
+import { deriveTeamProfile, STARTING_POSITIONS } from "../lib/teamIdentity";
 import {
   getMissingLineupPositions,
   normalizePlayerId,
@@ -48,6 +50,11 @@ function MyTeamPage() {
   const rosterConfig = normalizeRosterConfig(activeLeague);
   const starterIds = new Set(Object.values(lineup || {}).filter(Boolean).map(normalizePlayerId));
   const bench = roster.filter((player) => !starterIds.has(normalizePlayerId(player.id)));
+  const teamIdentity = useMemo(() => {
+    const rosterById = new Map(roster.map((player) => [normalizePlayerId(player.id), player]));
+    const normalizedLineup = Object.fromEntries(STARTING_POSITIONS.map((position) => [position, rosterById.get(normalizePlayerId(lineup?.[position])) || null]));
+    return deriveTeamProfile(normalizedLineup);
+  }, [lineup, roster]);
   const missingPositions = getMissingLineupPositions(roster, lineup);
   const gamesAvailable = [
     LEAGUE_STATUS.REGULAR_SEASON,
@@ -190,6 +197,7 @@ function MyTeamPage() {
           save(() => assignPlayer(position, playerId))
         }
       />
+      <TeamIdentitySummary profile={teamIdentity} />
       {releaseCandidate && <div className="player-details-backdrop" role="presentation"><section className="release-confirmation" role="dialog" aria-modal="true" aria-labelledby="release-title"><p className="section-label">ROSTER TRANSACTION</p><h2 id="release-title">Release Player?</h2><p><b>{releaseCandidate.name}</b> will become a free agent and their contract will be terminated immediately.</p><div><button className="button-secondary" type="button" disabled={setupBusy === "release"} onClick={() => setReleaseCandidate(null)}>Cancel</button><button className="button-primary" type="button" disabled={setupBusy === "release"} onClick={confirmRelease}>{setupBusy === "release" ? "Releasing..." : "Release Player"}</button></div></section></div>}
       {repairOpen && <PreseasonRosterRepair roster={roster} onClose={() => setRepairOpen(false)} />}
       </div>

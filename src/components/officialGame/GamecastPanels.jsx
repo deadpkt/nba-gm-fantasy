@@ -138,7 +138,7 @@ export function GameLeaders({ players, stats }) {
 export function BreakState({ event, game }) {
   if (
     !event ||
-    !["quarter_end", "halftime", "game_end"].includes(event.eventType)
+    !["quarter_end", "halftime", "overtime_end", "game_end"].includes(event.eventType)
   )
     return null;
   const label =
@@ -146,7 +146,7 @@ export function BreakState({ event, game }) {
       ? "HALFTIME"
       : event.eventType === "game_end"
         ? "FINAL BUZZER"
-        : `END OF Q${event.quarter}`;
+        : event.eventType === "overtime_end" ? `END OF OT${event.quarter - 4}` : `END OF Q${event.quarter}`;
   return (
     <div className="broadcast-break" role="status">
       <span>{label}</span>

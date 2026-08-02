@@ -4,6 +4,8 @@ import {
 } from "../shared/liveSimulation.js";
 import { OFFICIAL_PRESENTATION_DURATION_MS } from "../shared/presentationTiming.js";
 import { validateStartingLineup } from "../shared/lineup.js";
+import { EVENT_SCHEMA_VERSION_V1, SIMULATION_VERSION_V1, SIMULATION_VERSION_V2, validateSimulationVersionPins } from "../shared/engineVersions.js";
+import { simulateOfficialGameV2 } from "../shared/officialSimulationV2.js";
 
 export { OFFICIAL_PRESENTATION_DURATION_MS } from "../shared/presentationTiming.js";
 const TRACKED_STATS = ["points", "rebounds", "assists", "steals", "blocks"];
@@ -135,7 +137,7 @@ function buildTimeline(possessions, gameIdentity, finalScore) {
   }));
 }
 
-export function simulateOfficialGame({ gameIdentity, homeTeam, awayTeam, rosterSize = 5 }) {
+export function simulateOfficialGameV1({ gameIdentity, homeTeam, awayTeam, rosterSize = 5 }) {
   const home = getValidStartingLineup(homeTeam, rosterSize);
   const away = getValidStartingLineup(awayTeam, rosterSize);
   const seed = createOfficialGameSeed(gameIdentity);
@@ -204,6 +206,16 @@ export function simulateOfficialGame({ gameIdentity, homeTeam, awayTeam, rosterS
   };
 }
 
+export function simulateOfficialGame({ gameIdentity, homeTeam, awayTeam, rosterSize = 5, simulationVersion = SIMULATION_VERSION_V1 }) {
+  if (simulationVersion === SIMULATION_VERSION_V1) return simulateOfficialGameV1({ gameIdentity, homeTeam, awayTeam, rosterSize });
+  if (simulationVersion !== SIMULATION_VERSION_V2) throw new Error("This simulation version is not supported.");
+  const assigned = (players) => players.map((player, index) => ({ ...player, assignedPosition: ["PG", "SG", "SF", "PF", "C"][index] }));
+  const homePlayers = assigned(getValidStartingLineup(homeTeam, rosterSize));
+  const awayPlayers = assigned(getValidStartingLineup(awayTeam, rosterSize));
+  const seed = createOfficialGameSeed(gameIdentity);
+  return simulateOfficialGameV2({ seed, gameIdentity, homeTeam, awayTeam, homePlayers, awayPlayers });
+}
+
 const normalizedRecord = (team) => ({
   wins: Number.isInteger(team?.record?.wins) ? team.record.wins : 0,
   losses: Number.isInteger(team?.record?.losses) ? team.record.losses : 0,
@@ -242,10 +254,11 @@ export function buildOfficialCompletion({ game, homeTeam, awayTeam, simulation }
   };
 }
 
-export function buildOfficialGameActivation({ game, homeTeam, awayTeam, startedAt, endsAt, rosterSize = 5 }) {
+export function buildOfficialGameActivation({ game, homeTeam, awayTeam, startedAt, endsAt, rosterSize = 5, league = {} }) {
   if (!["scheduled", "ready"].includes(game?.status)) {
     throw new Error("Only a scheduled official game can be activated.");
   }
+  const engineVersions = validateSimulationVersionPins(league.seasonEngineVersions ? { engineVersions: league.seasonEngineVersions } : {});
   const simulation = simulateOfficialGame({
     gameIdentity: {
       leagueId: game.leagueId,
@@ -258,16 +271,22 @@ export function buildOfficialGameActivation({ game, homeTeam, awayTeam, startedA
     homeTeam,
     awayTeam,
     rosterSize,
+    simulationVersion: engineVersions.simulationVersion,
   });
   return {
     status: "in_progress",
-    runtime: { version: 1 },
+    simulationVersion: engineVersions.simulationVersion,
+    ratingsVersion: engineVersions.ratingsVersion,
+    eventSchemaVersion: engineVersions.eventSchemaVersion,
+    runtime: { version: engineVersions.simulationVersion },
     startedAt,
     result: simulation.result,
     boxScore: simulation.boxScore,
     timeline: simulation.timeline,
+    ...(simulation.simulationInput ? { simulationInput: simulation.simulationInput } : {}),
+    ...(simulation.simulationInput?.seed ? { simulationSeed: simulation.simulationInput.seed } : {}),
     presentation: {
-      version: 1,
+      version: engineVersions.eventSchemaVersion === EVENT_SCHEMA_VERSION_V1 ? 1 : 2,
       speed: 1,
       durationMs: OFFICIAL_PRESENTATION_DURATION_MS,
       startedAt,

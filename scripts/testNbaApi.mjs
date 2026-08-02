@@ -1,4 +1,7 @@
 import { createBalldontlieClient, probeProviderCapabilities } from "../functions/lib/balldontlie.js";
+import { loadLocalEnv } from "./lib/loadLocalEnv.mjs";
+
+loadLocalEnv();
 
 async function main() {
   const key = process.env.BALLDONTLIE_API_KEY;

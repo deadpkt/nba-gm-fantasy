@@ -1,43 +1,23 @@
-const ratings = [
-  ["Inside Scoring", "insideScoring"],
-  ["Mid Range", "midRange"],
-  ["Three Point", "threePoint"],
-  ["Free Throw", "freeThrow"],
-  ["Playmaking", "playmaking"],
-  ["Ball Handle", "ballHandle"],
-  ["Passing", "passing"],
-  ["Perimeter Defense", "perimeterDefense"],
-  ["Interior Defense", "interiorDefense"],
-  ["Rebounding", "rebounding"],
-  ["Athleticism", "athleticism"],
-  ["Stamina", "stamina"],
+import { hasVerifiedRatingsV2 } from "../../lib/playerRatingCompatibility";
+
+const groups = [
+  ["SCORING", [["Rim Scoring", "rimScoring"], ["Mid Range", "midRange"], ["Three Point", "threePoint"], ["Free Throw", "freeThrow"]]],
+  ["CREATION", [["Playmaking", "playmaking"], ["Ball Handling", "ballHandling"], ["Turnover Control", "turnoverControl"]]],
+  ["DEFENSE", [["Perimeter Defense", "perimeterDefense"], ["Interior Defense", "interiorDefense"], ["Steal", "steal"], ["Block", "block"]]],
+  ["PHYSICAL / POSSESSION", [["Offensive Rebounding", "offensiveRebounding"], ["Defensive Rebounding", "defensiveRebounding"], ["Athleticism", "athleticism"], ["Stamina", "stamina"], ["Consistency", "consistency"]]],
 ];
 function PlayerRatings({ player }) {
+  if (!hasVerifiedRatingsV2(player)) return <section className="player-details__section"><div className="player-details__section-head"><span>GAME RATINGS</span><b>Legacy ratings profile</b></div><p className="player-stats__unavailable">Detailed verified ratings data is not yet available for this player.</p></section>;
   const source = player.ratings || {};
-  const aliases = {
-    insideScoring: "scoring",
-    midRange: "shooting",
-    threePoint: "shooting",
-    freeThrow: "shooting",
-    ballHandle: "playmaking",
-    passing: "playmaking",
-    perimeterDefense: "defense",
-    interiorDefense: "defense",
-    athleticism: "stamina",
-  };
   return (
     <section className="player-details__section">
       <div className="player-details__section-head">
         <span>GAME RATINGS</span>
         <b>Fantasy simulation attributes</b>
       </div>
-      <div className="player-ratings">
+      {groups.map(([group, ratings]) => <div key={group}><div className="player-details__section-head"><span>{group}</span></div><div className="player-ratings">
         {ratings.map(([label, key]) => {
-          const value = Number.isFinite(source[key])
-            ? source[key]
-            : Number.isFinite(source[aliases[key]])
-              ? source[aliases[key]]
-              : null;
+          const value = Number.isFinite(source[key]) ? source[key] : null;
           return (
             <div className="player-rating" key={key}>
               <span>{label}</span>
@@ -55,7 +35,7 @@ function PlayerRatings({ player }) {
             </div>
           );
         })}
-      </div>
+      </div></div>)}
     </section>
   );
 }

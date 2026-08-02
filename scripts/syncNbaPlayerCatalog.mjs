@@ -2,6 +2,9 @@ import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin
 import { getFirestore } from "firebase-admin/firestore";
 import { syncNbaCatalog } from "../functions/lib/syncNbaCatalog.js";
 import { createBalldontlieClient } from "../functions/lib/balldontlie.js";
+import { loadLocalEnv, requireLocalEnv } from "./lib/loadLocalEnv.mjs";
+
+loadLocalEnv();
 
 function initializeAdmin() {
   if (getApps().length) return getApps()[0];
@@ -11,10 +14,10 @@ function initializeAdmin() {
 
 async function main() {
   if (process.argv.includes("--provider-test")) {
-    if (!process.env.BALLDONTLIE_API_KEY) throw new Error("BALLDONTLIE_API_KEY is not configured.");
+    const apiKey = requireLocalEnv("BALLDONTLIE_API_KEY");
     console.log("Provider-only diagnostic: Firestore will not be initialized or written.");
     console.log("Connecting to BALLDONTLIE...");
-    const client = createBalldontlieClient({ apiKey: process.env.BALLDONTLIE_API_KEY, logger: console.log });
+    const client = createBalldontlieClient({ apiKey, logger: console.log });
     const response = await client.request("/players", { per_page: 100 });
     if (!Array.isArray(response?.data)) throw new Error("Provider response is missing a data array.");
     console.log("HTTP success.");
@@ -28,11 +31,11 @@ async function main() {
     console.log("To run the trusted upsert sync, use: npm run sync:nba-catalog -- --write --confirm");
     return;
   }
-  if (!process.env.BALLDONTLIE_API_KEY) throw new Error("BALLDONTLIE_API_KEY is not configured in the server environment.");
+  const apiKey = requireLocalEnv("BALLDONTLIE_API_KEY");
   console.log("Initializing Firebase Admin credentials...");
   initializeAdmin();
   console.log("Firebase Admin initialized. Starting trusted catalog sync.");
-  const result = await syncNbaCatalog({ db: getFirestore(), apiKey: process.env.BALLDONTLIE_API_KEY, logger: console.log });
+  const result = await syncNbaCatalog({ db: getFirestore(), apiKey, logger: console.log });
   console.log(`NBA catalog sync completed: ${result.draftEligiblePlayerCount} Draft eligible / ${result.playerCount} retained players (${result.filteringStrategy}).`);
 }
 main().catch((error) => { console.error(`NBA catalog sync aborted: ${error.message}`); process.exitCode = 1; });

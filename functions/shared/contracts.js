@@ -1,6 +1,8 @@
 import { getLeagueSalaryCap, LEGACY_SALARY_CAP, normalizeRosterConfig } from "./rosterConfig.js";
+import { CONTRACT_MODEL_VERSION_V1 } from "./engineVersions.js";
 
 export const CONTRACT_VERSION = 1;
+export const CONTRACT_MODEL_VERSION = CONTRACT_MODEL_VERSION_V1;
 export const SALARY_CAP = LEGACY_SALARY_CAP;
 export const MIN_SALARY = 11_000_000;
 export const MAX_SALARY = 20_000_000;

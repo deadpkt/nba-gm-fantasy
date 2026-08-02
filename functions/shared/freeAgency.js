@@ -45,7 +45,7 @@ export function getProjectedFreeAgentContract({ player, league }) {
   });
 }
 
-export function buildFreeAgentSigning({ league, team, contracts = [], player, actorUid, ownershipExists = false, contractExists = false }) {
+export function buildFreeAgentSigning({ league, team, contracts = [], player, rosterPlayer = player, actorUid, ownershipExists = false, contractExists = false }) {
   validateOffseasonActor({ league, team, actorUid });
   if (!player || player.active !== true || player.draftEligible !== true) fail("player-ineligible", "This player is not eligible for Free Agency.");
   if (ownershipExists) fail("player-owned", "Player is no longer available.");
@@ -63,7 +63,7 @@ export function buildFreeAgentSigning({ league, team, contracts = [], player, ac
     fail("over-cap", `Signing would put your franchise $${overBy / 1_000_000}M over the salary cap.`);
   }
   return {
-    roster: [...roster, player],
+    roster: [...roster, rosterPlayer],
     lineup: { ...(team.lineup || {}) },
     contract,
     payrollAfter: payroll + contract.salary,

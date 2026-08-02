@@ -241,6 +241,7 @@ function Header() {
                     What’s New {latestUpdate.unseen && <small className="updates-new-badge">New</small>}
                   </NavLink>
                   {admin && <NavLink to="/admin/dev-log" role="menuitem" onClick={() => setProfileMenuOpen(false)}>Dev Log Admin</NavLink>}
+                  {admin && <NavLink to="/admin/nba-data/ratings-preview" role="menuitem" onClick={() => setProfileMenuOpen(false)}>Ratings Preview</NavLink>}
                   <NavLink
                     to="/settings"
                     role="menuitem"
