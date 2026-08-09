@@ -187,6 +187,7 @@ main { position: relative; min-height: 100vh; overflow: hidden; background: tran
 .notification-card { width: 100%; border-top: 0; border-right: 0; border-left: 0; color: inherit; text-align: left; cursor: pointer; font-family: var(--font-body, Manrope, system-ui, sans-serif); }
 .notification-card.is-unread { border-left: 3px solid #f4c646; }
 .notification-card__content { display: block; min-width: 0; }
+.notification-card__content { width:100%; padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; font:inherit; }
 .notification-card__content > span:first-child { display: flex; align-items: center; gap: 6px; }
 .notification-card__detail { display: block; margin: 4px 0; color: #a1b4ca; font-size: 11px; line-height: 1.45; }
 .notification-card__icon--champion, .notification-card__icon--playoff, .notification-card__icon--draft { color: #f4c646; }
@@ -195,14 +196,17 @@ main { position: relative; min-height: 100vh; overflow: hidden; background: tran
 .notifications-page__header h1 { margin: 3px 0 5px; color: #fff; font: 800 clamp(38px, 6vw, 62px)/.9 var(--font-display, 'Barlow Condensed', sans-serif); }
 .notifications-page__header p:last-child { margin: 0; color: #9eb2c9; font-size: 12px; }
 .notifications-page__header > span { flex: 0 0 auto; color: #f4c646; font: 700 11px var(--font-body, Manrope, sans-serif); }
+.notifications-page__tools{position:relative;display:flex;align-items:center;gap:10px}.notifications-page__tools>span{color:#f4c646;font:700 11px var(--font-body,Manrope,sans-serif)}.notifications-page__tools>button{display:grid;place-items:center;width:36px;height:36px;border:1px solid #ffffff20;border-radius:9px;background:#0d2035;color:#dbe6f1;cursor:pointer}.notifications-page__tools>div{position:absolute;z-index:8;top:calc(100% + 7px);right:0;display:grid;min-width:180px;padding:6px;border:1px solid #ffffff1c;border-radius:10px;background:#091725;box-shadow:0 16px 35px #0008}.notifications-page__tools>div button{padding:9px 10px;border:0;border-radius:7px;background:transparent;color:#dbe6f1;text-align:left;cursor:pointer}.notifications-page__tools>div button:hover{background:#ffffff0b}.notifications-page__tools>div button:disabled{color:#607080;cursor:not-allowed}
 .notification-group { margin-top: 25px; overflow: hidden; border: 1px solid #ffffff17; background: #0b1b31b5; }
 .notification-group > h2 { margin: 0; padding: 11px 16px; border-bottom: 1px solid #ffffff12; color: #91a9c4; font: 700 11px var(--font-body, Manrope, sans-serif); }
 .notifications-loading, .notifications-error { min-height: 260px; display: grid; place-items: center; color: #9eb2c9; font-size: 12px; }
 .notifications-error { color: #f3a6b0; }
+.notification-card__manage{display:flex;align-items:center;gap:6px;align-self:center}.notification-card__manage button{display:inline-flex;align-items:center;gap:5px;padding:6px 8px;border:1px solid #ffffff17;border-radius:7px;background:#102238;color:#98aabd;white-space:nowrap;cursor:pointer;font:700 9px var(--font-body,Manrope,sans-serif)}.notification-card__manage button:hover{border-color:#f4c64666;color:#f4c646}.notification-confirmation{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:18px;background:#02070dcc}.notification-confirmation>section{width:min(440px,100%);padding:23px;border:1px solid #ffffff20;border-radius:16px;background:#091725;box-shadow:0 25px 70px #000a}.notification-confirmation h2{margin:0;font:800 27px var(--font-display)}.notification-confirmation p{color:#a8b6c5;line-height:1.55}.notification-confirmation footer{display:flex;justify-content:flex-end;gap:8px}.notification-confirmation button{min-height:38px;padding:0 13px;border:1px solid #ffffff1d;border-radius:8px;background:#12253a;color:#fff}.notification-confirmation button:last-child{border-color:#e32842;background:#c92238}
 @media (max-width: 560px) {
   .notification-dropdown { top: 62px; right: 8px; width: calc(100vw - 16px); }
   .notification-dropdown .notification-list { max-height: calc(100vh - 190px); }
   .notifications-page__header { align-items: start; flex-direction: column; gap: 10px; }
+  .notifications-page__tools{width:100%;justify-content:space-between}.notifications-page__tools>div{right:0;left:auto}.notification-card__manage{grid-column:2;justify-self:start;flex-wrap:wrap}.notification-card__manage button span{display:none}
   .notification-card { grid-template-columns: 36px minmax(0, 1fr); padding: 13px 12px; }
   .notification-card__icon { width: 36px; height: 36px; }
 }

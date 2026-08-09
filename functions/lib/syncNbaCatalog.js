@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { assertPlausibleCurrentPlayerCount, createHeadshotIdentityLookup, mergeProviderCatalog, selectCanonicalProviderIdentities, selectCurrentPlayerCandidates, CATALOG_SYNC_VERSION } from "../shared/nbaCatalog.js";
-import { createBalldontlieClient, loadProviderDirectory } from "./balldontlie.js";
+import { createBalldontlieClient, loadProviderDirectory } from "../providers/balldontlie/client.js";
 
 const require = createRequire(import.meta.url);
 const currentPlayerSnapshot = require("../data/currentPlayers-2025-26.json");

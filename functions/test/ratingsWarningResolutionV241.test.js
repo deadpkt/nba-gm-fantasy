@@ -57,9 +57,9 @@ test("V2.4 remains deterministic and V2.4.1 is separately versioned", () => {
   const next = generateRatingsV2Population({ players: [player], seasonStats: [season], formulaVersion: RATING_FORMULA_VERSION, generatedAt: "fixed" }); assert.equal(next.results[0].ratingFormulaVersion, "ratings-v2.4.1");
 });
 
-test("Admin review exposes warning resolution and recalibration has no provider dependency", async () => {
-  const admin = await readFile(new URL("../../src/pages/AdminRatingsPreviewPage.jsx", import.meta.url), "utf8");
+test("Admin review keeps warning diagnostics accessible without duplicating the default view", async () => {
+  const admin = await readFile(new URL("../../src/pages/admin/AdminRatingsPreviewPage.jsx", import.meta.url), "utf8");
   const recalibration = await readFile(new URL("../lib/recalibrateRatingsPreview.js", import.meta.url), "utf8");
-  assert.match(admin, /Warning resolution/); assert.match(admin, /Root cause filter/); assert.match(admin, /Resolution filter/); assert.match(admin, /shootingGravity/);
+  assert.match(admin, /Advanced Details/); assert.match(admin, /warningResolution/); assert.match(admin, /All warning codes/); assert.match(admin, /shootingGravity/);
   assert.doesNotMatch(recalibration, /createBalldontlieClient|fetchGoatRatingsPreview|playerCatalogs\/current/);
 });

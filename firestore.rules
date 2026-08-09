@@ -360,6 +360,11 @@ service cloud.firestore {
       }
     }
 
+    match /playerDataImportReviewHistory/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /publicProfiles/{userId} {
       allow get, list: if signedIn();
       allow create: if signedIn() && request.auth.uid == userId && isNewPublicProfile(userId);

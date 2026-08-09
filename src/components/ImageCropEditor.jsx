@@ -4,7 +4,7 @@ import { PROFILE_CROP_OUTPUTS } from "../lib/profileMedia";
 import { getUserFriendlyError } from "../lib/clientErrors";
 
 function clamp(value) {
-  return Math.max(-1, Math.min(1, value)); 
+  return Math.max(-1, Math.min(1, value));
 }
 
 function ImageCropEditor({ file, type, onCancel, onConfirm }) {

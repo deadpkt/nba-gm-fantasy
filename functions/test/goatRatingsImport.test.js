@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createBalldontlieClient, fetchAllCursorPages, ProviderCapabilityError } from "../lib/balldontlie.js";
+import { createBalldontlieClient, fetchAllCursorPages, ProviderCapabilityError } from "../providers/balldontlie/client.js";
 import { fetchGoatRatingsPreview, joinGoatCategoryRecords, normalizeNbaSeason } from "../lib/goatRatingsImport.js";
 import { normalizeSeasonStatRecord } from "../shared/seasonStats.js";
 

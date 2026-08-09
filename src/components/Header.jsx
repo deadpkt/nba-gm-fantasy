@@ -6,7 +6,7 @@ import { getHeaderNavigation, getPrimaryNavigationItems } from "../lib/headerNav
 import { LEAGUE_STATUS } from "../lib/leagueStatuses";
 import FullCourtLogo from "./brand/FullCourtLogo";
 import MobileNavigationDrawer from "./MobileNavigationDrawer";
-import NotificationBell from "./notifications/NotificationBell";
+import NotificationBell from "../features/notifications/components/NotificationBell";
 import useAdminClaim from "../hooks/useAdminClaim";
 import useLatestUpdate from "../hooks/useLatestUpdate";
 import "./brand/brand.css";

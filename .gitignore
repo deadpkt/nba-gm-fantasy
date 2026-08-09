@@ -15,6 +15,7 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo
@@ -34,6 +35,7 @@ serviceAccount*.json
 .firebase/
 
 # Local provider imports and generated Ratings previews
+local-data/ratings/**
 goat-ratings-preview-*.json
 goat-ratings-input-*.json
 goat-ratings-cache-*.json

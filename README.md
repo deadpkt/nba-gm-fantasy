@@ -1,82 +1,39 @@
-# 🏀 NBA GM Fantasy
+# FULL COURT
 
-A modern NBA-inspired fantasy basketball management and simulation experience built with React and Firebase.
+A multiplayer basketball general-manager experience built with React, Vite, and Firebase.
 
-Create your dream team, manage your lineup, compete against friends, and experience basketball management in an NBA 2K inspired environment.
+FULL COURT supports authenticated dynasty leagues, synchronized drafts, roster and contract management, official scheduled games, standings, playoffs, offseason progression, notifications, and trusted player-catalog administration.
 
----
+## Technology
 
-## 🚀 Features
+- React and Vite frontend
+- Firebase Authentication and Firestore
+- Trusted Firebase Cloud Functions
+- Vercel frontend deployment
 
-### 👤 Authentication
+## Project structure
 
-- Google Sign-In with Firebase Authentication
-- Secure user sessions
-- Persistent login after refresh
-- User profile integration
+- `src/` — frontend routes, UI features, contexts, and client repositories.
+- `functions/` — trusted Firebase backend, provider adapters, and shared domain logic.
+- `scripts/` — local admin, data, ratings, simulation, and maintenance tooling.
+- `docs/` — architecture, data, and ratings documentation.
+- `test/` — Firestore security and integration-oriented tests.
+- `local-data/` — ignored generated inputs, previews, archives, and provider caches.
 
-### 🏀 Fantasy Team Management
+See [Repository layout](docs/architecture/repository-layout.md) for ownership rules and placement guidance.
 
-- Build your own basketball team
-- Select and manage players
-- Create your starting five
-- Calculate team ratings
-- Track team performance
+## Development
 
-### 🏟️ Basketball Court Lineup System
+```bash
+npm install
+npm run dev
+```
 
-- Visual basketball court layout
-- Assign players to positions:
-  - PG (Point Guard)
-  - SG (Shooting Guard)
-  - SF (Small Forward)
-  - PF (Power Forward)
-  - C (Center)
+Validation:
 
-### 🎮 Match Simulation
-
-- Basketball-style game simulation
-- Live scoreboard experience
-- Player performances
-- Team ratings affect game results
-- MVP selection
-
-### 🌐 Online Multiplayer
-
-- Invite friends with a match link
-- Play against other fantasy teams
-- Real-time updates with Firebase
-
-### 🎨 NBA Inspired UI
-
-- Modern dark basketball theme
-- NBA 2K inspired player cards
-- Smooth animations
-- Responsive design
-- Basketball arena atmosphere
-
----
-
-## 🛠️ Tech Stack
-
-### Frontend
-
-- React
-- Vite
-- JavaScript
-- CSS
-
-### Backend / Services
-
-- Firebase Authentication
-- Firebase Firestore
-
-### Development Tools
-
-- Git
-- GitHub
-- Vercel
-
----
-
-## 📂 Project Structure
+```bash
+npm run lint
+npm run build
+npm run test:routes
+npm --prefix functions test
+```

@@ -30,10 +30,11 @@ import { buildDraftTurnWindow, draftTurnIdentity, draftTurnMatches, isDraftTurnE
 import { syncNbaCatalog as runNbaCatalogSync } from "./lib/syncNbaCatalog.js";
 import { normalizeRosterConfig } from "./shared/rosterConfig.js";
 import { buildFollowMutation, buildPublicProfile, validateFollowTarget } from "./shared/social.js";
-import { createTrustedNotification, createTrustedNotifications, markTrustedNotificationRead, notificationEventId } from "./lib/notifications.js";
+import { clearTrustedNotifications, createTrustedNotification, createTrustedNotifications, deleteTrustedNotification, markAllTrustedNotificationsRead, markTrustedNotificationRead, notificationEventId } from "./lib/notifications.js";
 import { activityEventId, createTrustedLeagueActivity } from "./lib/leagueActivity.js";
 import { devLogIdForVersion, newestPublished, normalizeDevLog } from "./shared/devLogs.js";
 import { publishRatingsPreview, rollbackPlayerCatalog } from "./lib/catalogPublication.js";
+import { approveCalibrationReview, revokeCalibrationReview, setLicensingReview } from "./lib/ratingsReview.js";
 import { catalogPlayersPath } from "./shared/catalogVersion.js";
 import { buildLeaguePlayerSnapshot } from "./shared/playerSnapshot.js";
 
@@ -117,6 +118,25 @@ export const markNotificationRead = onCall(async (request) => {
   const result = await markTrustedNotificationRead(db, request.auth.uid, notificationId);
   if (!result.found) throw new HttpsError("not-found", "Notification unavailable.");
   return { read: true, alreadyRead: !result.changed };
+});
+
+export const markAllNotificationsRead = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  return markAllTrustedNotificationsRead(db, request.auth.uid);
+});
+
+export const deleteNotification = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  const notificationId = request.data?.notificationId;
+  if (typeof notificationId !== "string" || !/^[A-Za-z0-9_-]{1,150}$/.test(notificationId)) throw new HttpsError("invalid-argument", "A valid notification ID is required.");
+  const result = await deleteTrustedNotification(db, request.auth.uid, notificationId);
+  if (!result.found) throw new HttpsError("not-found", "Notification unavailable.");
+  return result;
+});
+
+export const clearNotifications = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  return clearTrustedNotifications(db, request.auth.uid, { readOnly: request.data?.readOnly === true });
 });
 
 export const ensurePublicProfile = onCall(async (request) => {
@@ -205,17 +225,32 @@ export const syncNbaPlayerCatalog = onCall({ secrets: [balldontlieApiKey], timeo
 
 const catalogPublicationError = (error) => {
   if (error instanceof HttpsError) return error;
-  const code = error?.code === "permission-denied" ? "permission-denied" : /unavailable|not found/i.test(error?.message || "") ? "not-found" : /immutable|already|validation|required|preview/i.test(error?.message || "") ? "failed-precondition" : "internal";
+  const code = error?.code === "permission-denied" ? "permission-denied" : /unavailable|not found/i.test(error?.message || "") ? "not-found" : /immutable|already|validation|required|preview|review|confirmation|critical|stale|revoked|unsupported|count|not ready|transition|basis/i.test(error?.message || "") ? "failed-precondition" : "internal";
   return new HttpsError(code, error?.message || "Catalog publication failed.");
 };
 
-export const publishPlayerCatalog = onCall({ timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
+export const publishPlayerCatalog = onCall({ timeoutSeconds: 900, memory: "1GiB" }, async (request) => {
   try { return await publishRatingsPreview({ db, auth: request.auth, ...(request.data || {}) }); }
   catch (error) { throw catalogPublicationError(error); }
 });
 
 export const rollbackPlayerCatalogVersion = onCall(async (request) => {
   try { return await rollbackPlayerCatalog({ db, auth: request.auth, ...(request.data || {}) }); }
+  catch (error) { throw catalogPublicationError(error); }
+});
+
+export const approveRatingsCalibrationReview = onCall(async (request) => {
+  try { return await approveCalibrationReview({ db, auth: request.auth, importId: request.data?.importId, input: request.data || {} }); }
+  catch (error) { throw catalogPublicationError(error); }
+});
+
+export const revokeRatingsCalibrationReview = onCall(async (request) => {
+  try { return await revokeCalibrationReview({ db, auth: request.auth, importId: request.data?.importId, input: request.data || {} }); }
+  catch (error) { throw catalogPublicationError(error); }
+});
+
+export const setRatingsLicensingReview = onCall(async (request) => {
+  try { return await setLicensingReview({ db, auth: request.auth, importId: request.data?.importId, input: request.data || {} }); }
   catch (error) { throw catalogPublicationError(error); }
 });
 

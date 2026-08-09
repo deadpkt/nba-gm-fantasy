@@ -24,6 +24,7 @@ const paths = {
   plus: <><circle cx="12" cy="12" r="9"/><path d="M12 8v8m-4-4h8"/></>,
   trend: <><path d="m4 17 5-5 4 3 7-8"/><path d="M15 7h5v5"/></>,
   check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></>,
+  trash: <><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7"/><path d="M10 11v6m4-6v6"/></>,
 };
 
 function UiIcon({ name, size = 20, className = "" }) {

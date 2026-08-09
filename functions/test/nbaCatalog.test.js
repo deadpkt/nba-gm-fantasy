@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createBalldontlieClient, fetchAllCursorPages } from "../lib/balldontlie.js";
+import { createBalldontlieClient, fetchAllCursorPages } from "../providers/balldontlie/client.js";
 import {
   buildCanonicalPlayer, calculateGameRatings, getAvailableLeaguePlayers,
   assertPlausibleCurrentPlayerCount, mergeProviderCatalog, normalizePosition,

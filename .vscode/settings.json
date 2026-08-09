@@ -1,0 +1,14 @@
+{
+  "files.watcherExclude": {
+    "**/local-data/**": true,
+    "**/coverage/**": true,
+    "**/.firebase/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/local-data/**": true,
+    "**/coverage/**": true,
+    "**/.firebase/**": true,
+    "**/dist/**": true
+  }
+}

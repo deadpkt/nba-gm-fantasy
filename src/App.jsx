@@ -32,8 +32,8 @@ const SignUpPage = lazy(() => import("./pages/SignUpPage"));
 const StandingsPage = lazy(() => import("./pages/StandingsPage"));
 const TradeCenterPage = lazy(() => import("./pages/TradeCenterPage"));
 const UpdatesPage = lazy(() => import("./pages/UpdatesPage"));
-const AdminDevLogPage = lazy(() => import("./pages/AdminDevLogPage"));
-const AdminRatingsPreviewPage = lazy(() => import("./pages/AdminRatingsPreviewPage"));
+const AdminDevLogPage = lazy(() => import("./pages/admin/AdminDevLogPage"));
+const AdminRatingsPreviewPage = lazy(() => import("./pages/admin/AdminRatingsPreviewPage"));
 
 const protectedPage = (page) => <ProtectedRoute>{page}</ProtectedRoute>;
 const leaguePhasePage = (page, statuses) =>

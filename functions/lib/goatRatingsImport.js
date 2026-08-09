@@ -1,5 +1,5 @@
-import { fetchAllCursorPages, ProviderCapabilityError } from "./balldontlie.js";
-import { createBalldontliePlayerProvider } from "../providers/balldontliePlayerProvider.js";
+import { fetchAllCursorPages, ProviderCapabilityError } from "../providers/balldontlie/client.js";
+import { createBalldontliePlayerProvider } from "../providers/balldontlie/playerProvider.js";
 import { buildPlayerIdentityIndex, matchCanonicalPlayerIdentity } from "../shared/playerIdentity.js";
 import { validateCanonicalPlayers } from "../shared/playerDataValidation.js";
 import { generateRatingsPreview } from "./generateRatingsPreview.js";

@@ -13,7 +13,7 @@ import {
   validateGoatPreviewPayload,
   validateStageOptions,
 } from "./ratingsPreviewStaging.mjs";
-import { executeStageRatingsPreview, runStageRatingsPreview } from "../stageRatingsPreview.mjs";
+import { executeStageRatingsPreview, runStageRatingsPreview } from "../ratings/stageRatingsPreview.mjs";
 
 function preview() {
   return {
@@ -94,7 +94,7 @@ test("local-only options do not activate staging", () => {
 });
 
 test("stage-from-file has no provider or publication dependency", async () => {
-  const source = await readFile(new URL("../stageRatingsPreview.mjs", import.meta.url), "utf8");
+  const source = await readFile(new URL("../ratings/stageRatingsPreview.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(source, /fetchGoatRatingsPreview|createBalldontlieClient|publishCatalogVersion|catalogPublication/);
   assert.match(source, /stageValidatedPreview/);
 });
@@ -183,6 +183,6 @@ test("batch failure and success both produce terminal output", async () => {
 });
 
 test("direct executable uses awaited top-level completion", async () => {
-  const source = await readFile(new URL("../stageRatingsPreview.mjs", import.meta.url), "utf8");
+  const source = await readFile(new URL("../ratings/stageRatingsPreview.mjs", import.meta.url), "utf8");
   assert.match(source, /process\.exitCode\s*=\s*await executeStageRatingsPreview\(\)/);
 });

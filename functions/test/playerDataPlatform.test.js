@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createBalldontliePlayerProvider } from "../providers/balldontliePlayerProvider.js";
+import { createBalldontliePlayerProvider } from "../providers/balldontlie/playerProvider.js";
 import { assertPlayerProvider } from "../providers/playerProvider.js";
 import { normalizeCanonicalPlayer } from "../shared/canonicalPlayer.js";
 import { buildPlayerDataCoverage } from "../shared/playerDataCoverage.js";
 import { validateCanonicalPlayers } from "../shared/playerDataValidation.js";
 import { PLAYER_IMPORT_MODE, runPlayerDataImport } from "../lib/playerDataImport.js";
-import { fetchProviderCategories } from "../lib/providerCategoryFetch.js";
+import { fetchProviderCategories } from "../providers/balldontlie/categoryFetch.js";
 
 const auth = { uid: "admin", token: { admin: true } };
 const rawPlayer = (id, name, overrides = {}) => ({

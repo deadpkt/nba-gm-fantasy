@@ -1,0 +1,22 @@
+import { applicationDefault, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { readFileSync } from "node:fs";
+import { buildRatingsCoverageReport } from "../../functions/shared/ratingCoverage.js";
+
+const configuredProject = JSON.parse(readFileSync(new URL("../../.firebaserc", import.meta.url), "utf8")).projects?.default;
+if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId: process.env.GCLOUD_PROJECT || configuredProject });
+const db = getFirestore();
+const [catalog, teams] = await Promise.all([db.collection("playerCatalogs/current/players").get(), db.collectionGroup("teams").get()]);
+const players = catalog.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }));
+const snapshots = teams.docs.flatMap((team) => (team.data().roster || []).map((player) => ({ origin: "league-roster", ...player })));
+const report = buildRatingsCoverageReport(players, snapshots);
+console.log(`Total canonical players: ${report.totalCanonicalPlayers}`);
+console.log(`Active/Draft eligible: ${report.activeDraftEligibleCount}`);
+console.log(`V1 baseline: ${report.v1BaselineCount}`);
+console.log(`Verified V2: ${report.verifiedV2Count}`);
+console.log(`Malformed ratings: ${report.malformedRatingsCount}`);
+console.log(`Overall distribution: ${JSON.stringify(report.overallDistribution)}`);
+console.log(`Position distribution: ${JSON.stringify(report.positionDistribution)}`);
+console.log(`League roster snapshots: ${report.snapshotCount}`);
+console.log(`Normalized snapshot v2: ${report.normalizedSnapshotCount}`);
+console.log("Read-only audit complete. No Firestore data was changed.");

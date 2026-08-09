@@ -1,4 +1,5 @@
 import { isValidRatingsV2, RATING_FORMULA_VERSION } from "./playerRatingsV2.js";
+import { trustedReviewBlockers } from "./ratingsReview.js";
 
 export const CATALOG_PUBLICATION_CONFIRMATION_PREFIX = "PUBLISH";
 export const CATALOG_ROLLBACK_CONFIRMATION_PREFIX = "ROLLBACK";
@@ -8,15 +9,15 @@ const positionOf = (player) => player.primaryPosition || player.position || "UNK
 const average = (values) => values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length * 100) / 100 : 0;
 const counts = (rows, select) => rows.reduce((result, row) => { const key = select(row) || "UNKNOWN"; result[key] = (result[key] || 0) + 1; return result; }, {});
 
-export function catalogPublicationBlockers({ manifest, previewPlayers = [], basePlayers = [], version, confirmation, licensingApproval } = {}) {
+export function catalogPublicationBlockers({ importId, manifest, previewPlayers = [], basePlayers = [], version, confirmation, licensingApproval } = {}) {
   const blockers = [];
   const coverage = manifest?.coverage || {};
   if (manifest?.status !== "ready") blockers.push({ code: "preview-not-ready", message: "Ratings preview staging must complete before publication." });
-  if (manifest?.calibrationReview && manifest.calibrationReview.status !== "approved") blockers.push({ code: "calibration-review-required", message: "Ratings calibration coverage and anomaly review must be approved." });
+  blockers.push(...trustedReviewBlockers(importId, manifest));
   if (manifest?.formulaVersion && manifest.formulaVersion !== RATING_FORMULA_VERSION) blockers.push({ code: "unsupported-formula-version", message: `Only the current internal ratings formula (${RATING_FORMULA_VERSION}) can be published.` });
   if (!CATALOG_VERSION_PATTERN.test(String(version || ""))) blockers.push({ code: "invalid-version", message: "Use a version such as 2026.1." });
   if (confirmation !== `${CATALOG_PUBLICATION_CONFIRMATION_PREFIX} ${version}`) blockers.push({ code: "approval-confirmation-required", message: `Type PUBLISH ${version} to confirm.` });
-  if (licensingApproval?.status !== "approved" || !String(licensingApproval?.basis || "").trim()) blockers.push({ code: "licensing-checkpoint-required", message: "A real licensing approval basis is required." });
+  if (!String(licensingApproval?.basis || "").trim()) blockers.push({ code: "publication-license-basis-required", message: "Document the approved licensing basis for this publication." });
   if (!manifest || !previewPlayers.length) blockers.push({ code: "preview-empty", message: "The approved preview has no players." });
   if (manifest?.validationStatus !== "eligible-after-licensing-review" || coverage.publicationEligible !== true) blockers.push({ code: "validation-failed", message: "Preview validation is not publication eligible." });
   if ((manifest?.anomalySummary?.criticalCount || coverage.criticalAnomalyCount || 0) > 0) blockers.push({ code: "critical-anomalies", message: "Critical anomalies must be resolved." });
